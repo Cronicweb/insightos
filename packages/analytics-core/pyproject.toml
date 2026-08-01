@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "insightos-analytics-core"
+version = "1.0.0"
+description = "A reusable, deterministic analytics engine: profiling, quality scoring, KPI discovery, root-cause analysis, anomaly detection, forecasting, narratives and recommendations."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "InsightOS contributors" }]
+keywords = ["analytics", "business-intelligence", "root-cause-analysis", "statistics", "data-quality"]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Intended Audience :: Financial and Insurance Industry",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Information Analysis",
+]
+dependencies = ["pandas>=2.0", "numpy>=1.24"]
+
+[project.optional-dependencies]
+parquet = ["pyarrow>=14"]
+api = ["fastapi>=0.110", "uvicorn[standard]>=0.29"]
+dev = ["pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.5.0", "pyarrow>=14"]
+
+[project.scripts]
+insightos = "insightos.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/Cronicweb/insightos"
+Documentation = "https://cronicweb.github.io/insightos/"
+Repository = "https://github.com/Cronicweb/insightos"
+
+[tool.setuptools.packages.find]
+include = ["insightos*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = ["slow: end-to-end pipeline runs over the full demo datasets"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+# Correctness rules are enforced; stylistic opinions are left to the reviewer so
+# that CI failures always mean something is actually wrong.
+select = ["E", "F", "B", "C4"]
+ignore = ["E501", "B008", "B905"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501"]
