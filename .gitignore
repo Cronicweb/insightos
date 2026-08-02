@@ -29,3 +29,8 @@ apps/web/public/demo/
 .env.local
 .DS_Store
 *.log
+
+# DuckDB-WASM runtime, copied from node_modules by apps/web/scripts/copy-duckdb.mjs
+apps/web/public/duckdb/
+*.tsbuildinfo
+apps/web/package-lock.json

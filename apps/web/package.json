@@ -8,13 +8,18 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prebuild": "node scripts/copy-duckdb.mjs",
+    "predev": "node scripts/copy-duckdb.mjs"
   },
   "dependencies": {
+    "@duckdb/duckdb-wasm": "^1.28.0",
     "@tanstack/react-table": "8.17.3",
+    "apache-arrow": "^15.0.2",
     "clsx": "2.1.1",
     "lucide-react": "0.395.0",
     "next": "14.2.5",
+    "papaparse": "^5.4.1",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "recharts": "2.12.7",
@@ -22,6 +27,7 @@
   },
   "devDependencies": {
     "@types/node": "20.14.9",
+    "@types/papaparse": "^5.3.14",
     "@types/react": "18.3.3",
     "@types/react-dom": "18.3.0",
     "autoprefixer": "10.4.19",

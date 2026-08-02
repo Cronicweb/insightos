@@ -9,13 +9,15 @@ import { HeroMetric } from '@/components/panels/hero-metric';
 import { ChartRenderer } from '@/components/charts/chart-renderer';
 import { RootCausePanel } from '@/components/panels/root-cause-panel';
 import { RecommendationsPanel } from '@/components/panels/recommendations-panel';
+import { SqlPanel } from '@/components/panels/sql-panel';
 import { ReportPanel } from '@/components/panels/report-panel';
 import { QualityPanel } from '@/components/panels/quality-panel';
 import { AnomaliesPanel } from '@/components/panels/anomalies-panel';
 import { ForecastPanel } from '@/components/panels/forecast-panel';
 import { Badge, SectionLabel, Skeleton } from '@/components/ui/primitives';
 import { fixed, formatInt, formatPct, titleCase } from '@/lib/format';
-import { AlertCircle } from 'lucide-react';
+import { UploadDialog } from '@/components/upload/upload-dialog';
+import { AlertCircle, Upload } from 'lucide-react';
 
 export default function Page() {
   const [datasets, setDatasets] = React.useState<DatasetSummary[]>([]);
@@ -27,6 +29,9 @@ export default function Page() {
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [navOpen, setNavOpen] = React.useState(false);
+  const [uploadOpen, setUploadOpen] = React.useState(false);
+  // An uploaded dataset is held only in memory; it is never added to the demo index.
+  const [uploaded, setUploaded] = React.useState<{ label: string; analysis: Analysis } | null>(null);
 
   // While the mobile drawer is open the page behind it must not scroll away.
   React.useEffect(() => {
@@ -56,7 +61,7 @@ export default function Page() {
   }, []);
 
   React.useEffect(() => {
-    if (!activeKey) return;
+    if (!activeKey || uploaded) return;
     let cancelled = false;
     setLoading(true);
     fetchAnalysis(activeKey)
@@ -74,7 +79,7 @@ export default function Page() {
     return () => {
       cancelled = true;
     };
-  }, [activeKey]);
+  }, [activeKey, uploaded]);
 
   const kpi = React.useMemo(() => {
     if (!analysis) return null;
@@ -94,11 +99,27 @@ export default function Page() {
         onMenu={() => setNavOpen(true)}
       />
 
+      <UploadDialog
+        open={uploadOpen}
+        onClose={() => setUploadOpen(false)}
+        onAnalysed={(a, label) => {
+          setUploaded({ label, analysis: a });
+          setAnalysis(a);
+          setSelectedKpi(a.scorecard.primary_kpi_id ?? a.scorecard.kpis[0]?.id ?? null);
+          setTab('overview');
+          setError(null);
+          setLoading(false);
+        }}
+      />
+
       <div className="flex flex-1 flex-col lg:flex-row">
         <Sidebar
           datasets={datasets}
           activeKey={activeKey}
-          onSelect={setActiveKey}
+          onSelect={(k) => {
+            setUploaded(null);
+            setActiveKey(k);
+          }}
           analysis={analysis}
           selectedKpi={selectedKpi}
           onSelectKpi={(id) => {
@@ -110,6 +131,27 @@ export default function Page() {
         />
 
         <main className="min-w-0 flex-1 p-3 sm:p-4 lg:p-6">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setUploadOpen(true)}
+              className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-line bg-surface px-3 text-[13px] font-semibold hover:bg-elevated"
+            >
+              <Upload className="h-4 w-4" />
+              Upload dataset
+            </button>
+            {uploaded ? (
+              <>
+                <Badge tone="accent">Analysed locally: {uploaded.label}</Badge>
+                <span className="text-2xs text-subtle">
+                  Computed in your browser - nothing was uploaded.
+                </span>
+              </>
+            ) : (
+              <span className="text-2xs text-subtle">
+                CSV, JSON or Parquet. Your data never leaves your device.
+              </span>
+            )}
+          </div>
           {error ? <ErrorState message={error} /> : null}
           {!error && (loading || !analysis) ? <LoadingState /> : null}
           {!error && analysis && !loading ? (
@@ -216,6 +258,15 @@ function Workspace({
       <div className="space-y-4">
         <DatasetHeader analysis={analysis} onTab={onTab} />
         <ForecastPanel analysis={analysis} />
+      </div>
+    );
+  }
+
+  if (tab === 'sql') {
+    return (
+      <div className="space-y-4">
+        <DatasetHeader analysis={analysis} onTab={onTab} />
+        <SqlPanel analysis={analysis} />
       </div>
     );
   }
