@@ -68,7 +68,7 @@ export function TopNav({
         <div className="ml-auto flex items-center gap-1.5">
           <span className="mr-1 hidden items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-2xs text-muted md:inline-flex">
             <span className="h-1.5 w-1.5 rounded-full bg-positive" />
-            Demo mode \u00b7 static engine output
+            Demo mode &middot; static engine output
           </span>
           <a
             href="https://github.com/Cronicweb/insightos"

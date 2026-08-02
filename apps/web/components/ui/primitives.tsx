@@ -70,7 +70,7 @@ export function DeltaPill({
   className?: string;
 }) {
   if (value === null || value === undefined || !Number.isFinite(value)) {
-    return <span className="text-2xs text-subtle">\u2014</span>;
+    return <span className="text-2xs text-subtle">&mdash;</span>;
   }
   const up = value >= 0;
   const good = favourable === undefined || favourable === null ? up : favourable;
