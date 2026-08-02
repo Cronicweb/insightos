@@ -311,7 +311,7 @@ def describe_comparison(
                 value=round(float(share), 2), sample_size=len(rows),
                 comparison=f"Delta {d:,.2f} of total {total_delta:,.2f}.",
             ))
-    for s, d, share, pct in offsets:
+    for s, d, _share, pct in offsets:
         bullets.append(
             f"{s} moved the other way ({pct:+.1f}%), offsetting "
             f"{format_value(abs(d), unit)} of the change."
