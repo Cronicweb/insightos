@@ -92,11 +92,25 @@ export function formatPValue(p: number | null | undefined): string {
   return `p = ${p.toFixed(4)}`;
 }
 
+/** Words the business writes in capitals; title-casing them reads as a typo. */
+const ACRONYMS = new Set([
+  'hr', 'kpi', 'kpis', 'roas', 'roi', 'aov', 'clv', 'ltv', 'cpa', 'ctr', 'cac',
+  'sql', 'api', 'csv', 'json', 'id', 'ids', 'us', 'uk', 'eu', 'emea', 'apac',
+  'amer', 'apj', 'saas', 'b2b', 'b2c', 'ebitda', 'yoy', 'mom', 'qoq', 'nps',
+  'sla', 'pii', 'oee', 'los', 'atm', 'pos',
+]);
+
 export function titleCase(text: string | null | undefined): string {
   if (!text) return '\u2014';
   return text
     .replace(/[_-]+/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .split(' ')
+    .map((word) =>
+      ACRONYMS.has(word.toLowerCase())
+        ? word.toUpperCase()
+        : word.replace(/\b\w/g, (c) => c.toUpperCase()),
+    )
+    .join(' ')
     .trim();
 }
 
