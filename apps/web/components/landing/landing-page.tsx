@@ -4,6 +4,7 @@ import * as React from 'react';
 import type { DatasetSummary } from '@/lib/types';
 import { Badge, SectionLabel } from '@/components/ui/primitives';
 import { formatInt } from '@/lib/format';
+import { BrandMark } from '@/components/brand-mark';
 import {
   ArrowRight,
   BarChart3,
@@ -73,12 +74,7 @@ export function LandingPage({
       <header className="border-b border-line/70">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6">
           <div className="flex items-center gap-2.5">
-            <span
-              aria-hidden
-              className="grid h-8 w-8 place-items-center rounded-md bg-accent text-[13px] font-bold text-white"
-            >
-              iO
-            </span>
+            <BrandMark className="h-8 w-8" />
             <span className="text-[15px] font-semibold tracking-tight">InsightOS</span>
             {engineVersion ? (
               <span className="hidden text-[11px] text-subtle sm:inline">engine v{engineVersion}</span>

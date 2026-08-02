@@ -13,9 +13,20 @@ interface SqlResult {
   durationMs: number;
 }
 
+/**
+ * Values reach here already normalised by the engine (dates as ISO strings,
+ * HUGEINT aggregates as numbers), so this only has to handle presentation:
+ * thousands separators for quantities, no scientific notation, no `[object]`.
+ */
 function cell(v: unknown): string {
   if (v === null || v === undefined) return '-';
-  if (typeof v === 'number') return Number.isInteger(v) ? v.toLocaleString('en-GB') : v.toFixed(4);
+  if (typeof v === 'boolean') return v ? 'true' : 'false';
+  if (typeof v === 'bigint') return v.toLocaleString('en-GB');
+  if (typeof v === 'number') {
+    if (!Number.isFinite(v)) return '-';
+    return v.toLocaleString('en-GB', { maximumFractionDigits: 4 });
+  }
+  if (typeof v === 'object') return JSON.stringify(v);
   return String(v);
 }
 

@@ -1,9 +1,10 @@
 'use client';
 
 import * as React from 'react';
-import { Moon, Sun, Github, Activity, PanelLeft } from 'lucide-react';
+import { Moon, Sun, Github, PanelLeft } from 'lucide-react';
 import { useTheme } from './theme-provider';
 import { cn } from '@/lib/utils';
+import { BrandMark } from '@/components/brand-mark';
 
 export type WorkspaceTab =
   | 'overview'
@@ -60,9 +61,7 @@ export function TopNav({
             aria-label="Back to the InsightOS home page"
             className="flex items-center gap-2 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           >
-            <span className="grid h-7 w-7 place-items-center rounded-lg bg-ink text-canvas">
-              <Activity className="h-4 w-4" strokeWidth={2.4} aria-hidden />
-            </span>
+            <BrandMark className="h-7 w-7" />
             <span className="text-[17px] font-semibold tracking-tight">InsightOS</span>
           </button>
           {engineVersion ? (

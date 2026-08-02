@@ -22,6 +22,7 @@ import { UploadDialog } from '@/components/upload/upload-dialog';
 import { LandingPage } from '@/components/landing/landing-page';
 import { MobileNav } from '@/components/mobile-nav';
 import { AlertCircle, Upload } from 'lucide-react';
+import { modeNotice, resolveMode } from '@/lib/mode-copy';
 
 export default function Page() {
   const [datasets, setDatasets] = React.useState<DatasetSummary[]>([]);
@@ -220,11 +221,7 @@ export default function Page() {
             {engineVersion ? ` v${engineVersion}` : ''}.
           </span>
           <span>
-            {uploaded
-              ? 'Local mode: your file was parsed, queried and analysed in this browser tab.'
-              : IS_DEMO
-                ? 'Demo mode: rendering pre-computed engine output, no server required.'
-                : 'Live mode: connected to the InsightOS API.'}
+            {modeNotice(resolveMode({ uploaded: Boolean(uploaded), demo: IS_DEMO }))}
           </span>
           <span className="lg:ml-auto">
             MIT licensed &middot; every number on this page was computed, not written.

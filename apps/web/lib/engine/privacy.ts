@@ -150,3 +150,36 @@ export function detectSensitiveFields(columns: ColumnProfile[]): PrivacyReport {
     categories,
   };
 }
+
+export interface PrivacyScanSummary {
+  /** Neutral heading - the scan always runs, whatever it finds. */
+  heading: string;
+  /** What the scan concluded. */
+  status: string;
+  /** Badge copy; a clean dataset should not be labelled "masked automatically". */
+  badge: string;
+  tone: 'positive' | 'neutral';
+  detected: boolean;
+}
+
+/**
+ * Heading copy for the privacy card. Announcing "Sensitive fields detected"
+ * over an empty table is a lie, so the heading is neutral and the finding is
+ * stated separately.
+ */
+export function summarisePrivacyScan(report: {
+  fields?: readonly unknown[] | null;
+  masked_columns?: readonly unknown[] | null;
+}): PrivacyScanSummary {
+  const count = report.fields?.length ?? report.masked_columns?.length ?? 0;
+  const detected = count > 0;
+  return {
+    heading: 'Privacy scan',
+    status: detected
+      ? `Sensitive fields detected (${count})`
+      : 'No sensitive fields detected',
+    badge: detected ? 'Masked automatically' : 'Nothing to mask',
+    tone: detected ? 'positive' : 'neutral',
+    detected,
+  };
+}

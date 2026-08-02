@@ -6,6 +6,7 @@ import type { GovernanceReport, PrivacyReport } from '@/lib/types';
 import { fixed, titleCase } from '@/lib/format';
 import { Badge, SectionLabel } from '../ui/primitives';
 import { cn } from '@/lib/utils';
+import { summarisePrivacyScan } from '@/lib/engine/privacy';
 
 /**
  * Decision readiness, expressed the way a data governance forum would express
@@ -177,6 +178,7 @@ function GovernanceCard({ governance: g }: { governance: GovernanceReport }) {
 
 function PrivacyCard({ privacy }: { privacy: PrivacyReport }) {
   const masked = privacy.masked_columns ?? [];
+  const scan = summarisePrivacyScan(privacy);
   return (
     <section
       aria-labelledby="privacy-heading"
@@ -185,19 +187,21 @@ function PrivacyCard({ privacy }: { privacy: PrivacyReport }) {
       <div className="flex flex-wrap items-center gap-2">
         <ShieldCheck className="h-4 w-4 text-accent" aria-hidden />
         <SectionLabel>
-          <span id="privacy-heading">Sensitive fields detected</span>
+          <span id="privacy-heading">{scan.heading}</span>
         </SectionLabel>
         <span
           className={cn(
             'ml-auto rounded-md border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide',
-            TONE_STYLE.positive,
+            scan.tone === 'positive' ? TONE_STYLE.positive : TONE_STYLE.neutral,
           )}
         >
-          Masked automatically
+          {scan.badge}
         </span>
       </div>
 
-      <p className="mt-2 text-[13px] leading-relaxed text-muted">
+      <p className="mt-2 text-[13px] font-medium text-ink">{scan.status}</p>
+
+      <p className="mt-1 text-[13px] leading-relaxed text-muted">
         {privacy.notice ??
           privacy.summary ??
           'Columns that identify a person or an account are masked before any chart is built, and are excluded from breakdowns. Output stays aggregate unless drill-down is explicitly permitted.'}

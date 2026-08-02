@@ -10,7 +10,8 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "prebuild": "node scripts/copy-duckdb.mjs",
-    "predev": "node scripts/copy-duckdb.mjs"
+    "predev": "node scripts/copy-duckdb.mjs",
+    "test": "vitest run"
   },
   "dependencies": {
     "@duckdb/duckdb-wasm": "^1.28.0",
@@ -35,6 +36,7 @@
     "eslint-config-next": "14.2.5",
     "postcss": "8.4.39",
     "tailwindcss": "3.4.4",
-    "typescript": "5.4.5"
+    "typescript": "5.4.5",
+    "vitest": "^1.6.1"
   }
 }
