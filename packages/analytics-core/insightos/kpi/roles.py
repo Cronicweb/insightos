@@ -71,22 +71,29 @@ ROLE_PATTERNS: dict[str, tuple[str, set[SemanticType], float]] = {
     "region": (r"^(region|territory|zone|area|market|geo|country|state|city|branch|location)$",
                {SemanticType.CATEGORICAL, SemanticType.GEO}, 1.0),
     "segment": (r"^(segment|customer_?segment|tier|plan|category|customer_?type|class|"
-                "cohort|persona)$", {SemanticType.CATEGORICAL, SemanticType.ORDINAL}, 1.0),
+                r"cohort|persona|department|dept|division|business_?unit|team|"
+                r"specialty|speciality|ward|line|production_?line|work_?center)$",
+                {SemanticType.CATEGORICAL, SemanticType.ORDINAL}, 1.0),
     "channel": (r"^(channel|source|medium|acquisition_?channel|platform|device|sales_?channel)$",
                 {SemanticType.CATEGORICAL}, 1.0),
     "status": (r"^(status|state|order_?status|payment_?status|stage|outcome|result|disposition)$",
                {SemanticType.CATEGORICAL, SemanticType.BOOLEAN}, 1.0),
     # flags / rates
-    "churn_flag": (r"^(churn|churned|is_?churn|attrition|left|exited)$",
-                   {SemanticType.BOOLEAN, SemanticType.ORDINAL, SemanticType.CATEGORICAL}, 1.0),
+    "churn_flag": (r"^(churn|churned|is_?churn|churn_?flag|attrition|attrition_?flag|left|exited|terminated)$",
+                   {SemanticType.BOOLEAN, SemanticType.ORDINAL, SemanticType.CATEGORICAL,
+                    SemanticType.NUMERIC, SemanticType.COUNT}, 1.0),
     "fraud_flag": (r"^(fraud|is_?fraud|fraud_?flag|fraudulent|chargeback|dispute)$",
-                   {SemanticType.BOOLEAN, SemanticType.ORDINAL, SemanticType.CATEGORICAL}, 1.0),
-    "return_flag": (r"^(returned|is_?return|refund|refunded|cancelled|canceled)$",
-                    {SemanticType.BOOLEAN, SemanticType.ORDINAL, SemanticType.CATEGORICAL}, 1.0),
-    "defect_flag": (r"^(defect|is_?defect|failed|rejected|scrap|ng)$",
-                    {SemanticType.BOOLEAN, SemanticType.ORDINAL, SemanticType.CATEGORICAL}, 1.0),
+                   {SemanticType.BOOLEAN, SemanticType.ORDINAL, SemanticType.CATEGORICAL,
+                    SemanticType.NUMERIC, SemanticType.COUNT}, 1.0),
+    "return_flag": (r"^(returned|is_?return|return_?flag|refund|refunded|cancelled|canceled)$",
+                    {SemanticType.BOOLEAN, SemanticType.ORDINAL, SemanticType.CATEGORICAL,
+                    SemanticType.NUMERIC, SemanticType.COUNT}, 1.0),
+    "defect_flag": (r"^(defect|is_?defect|defect_?flag|failed|rejected|scrap|ng)$",
+                    {SemanticType.BOOLEAN, SemanticType.ORDINAL, SemanticType.CATEGORICAL,
+                    SemanticType.NUMERIC, SemanticType.COUNT}, 1.0),
     "new_customer_flag": (r"^(is_?new|new_?customer|first_?purchase|acquisition_?flag)$",
-                          {SemanticType.BOOLEAN, SemanticType.ORDINAL, SemanticType.CATEGORICAL}, 1.0),
+                          {SemanticType.BOOLEAN, SemanticType.ORDINAL, SemanticType.CATEGORICAL,
+                    SemanticType.NUMERIC, SemanticType.COUNT}, 1.0),
     "satisfaction": (r"^(satisfaction|nps|csat|rating|score|review_?score|feedback)$",
                      {SemanticType.NUMERIC, SemanticType.ORDINAL}, 1.0),
     # hr / healthcare / manufacturing
@@ -96,8 +103,9 @@ ROLE_PATTERNS: dict[str, tuple[str, set[SemanticType], float]] = {
                {SemanticType.NUMERIC, SemanticType.COUNT}, 1.0),
     "length_of_stay": (r"^(length_?of_?stay|los|days_?admitted|stay_?days)$",
                        {SemanticType.NUMERIC, SemanticType.COUNT}, 1.0),
-    "readmission_flag": (r"^(readmitted|readmission|is_?readmit)$",
-                         {SemanticType.BOOLEAN, SemanticType.ORDINAL, SemanticType.CATEGORICAL}, 1.0),
+    "readmission_flag": (r"^(readmitted|readmission|readmission_?flag|is_?readmit)$",
+                         {SemanticType.BOOLEAN, SemanticType.ORDINAL, SemanticType.CATEGORICAL,
+                    SemanticType.NUMERIC, SemanticType.COUNT}, 1.0),
     "downtime": (r"^(downtime|downtime_?minutes|stoppage|idle_?time)$",
                  {SemanticType.NUMERIC, SemanticType.COUNT}, 1.0),
     "output": (r"^(output|produced|production|units_?produced|throughput)$",
@@ -207,8 +215,13 @@ def resolve_roles(df: pd.DataFrame, schema: TableSchema) -> RoleMap:
         resolved.append(ResolvedRole("date", schema.time_columns[0], 0.5,
                                      "fallback: only datetime column in the table"))
     if not any(r.role == "revenue" for r in resolved):
+        # A column that already answered to a more specific role is not also the
+        # top line. Without this, an HR table reports "revenue fell 19%" when what
+        # actually moved was the salary bill, which destroys the report's credibility.
+        claimed = {r.column for r in resolved}
         currency_cols = [c for c in schema.columns
-                         if c.semantic_type == SemanticType.CURRENCY and not c.is_constant]
+                         if c.semantic_type == SemanticType.CURRENCY
+                         and not c.is_constant and c.name not in claimed]
         if currency_cols:
             best = max(currency_cols, key=lambda c: (c.mean or 0) * (1 - c.missing_pct / 100))
             resolved.append(ResolvedRole("revenue", best.name, 0.45,

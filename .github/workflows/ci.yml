@@ -64,7 +64,7 @@ jobs:
           client = TestClient(app)
           assert client.get("/health").json()["status"] == "ok"
           payload = client.get("/datasets").json()
-          assert len(payload["datasets"]) == 3, payload
+          assert len(payload["datasets"]) >= 3, payload
           analysis = client.get("/datasets/marketing/analysis").json()
           for key in ("schema", "quality", "scorecard", "charts", "recommendations", "report"):
               assert key in analysis, key

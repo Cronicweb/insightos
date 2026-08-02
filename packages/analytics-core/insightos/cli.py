@@ -26,7 +26,8 @@ from typing import Any
 
 from . import __version__
 
-_DEMO_KEYS = ("banking", "ecommerce", "marketing")
+_DEMO_KEYS = ("banking", "ecommerce", "marketing", "retail",
+              "healthcare", "hr", "manufacturing")
 
 
 # --------------------------------------------------------------------------- #

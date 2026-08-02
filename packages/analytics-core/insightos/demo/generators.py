@@ -370,6 +370,22 @@ GENERATORS = {
     "marketing": generate_marketing,
 }
 
+# Registered by :mod:`insightos.demo.verticals` on import. Kept here rather than
+# in the literal above so the four original datasets remain importable even if a
+# vertical generator is broken.
+def _register_verticals() -> None:
+    from . import verticals
+
+    GENERATORS.update({
+        "retail": verticals.generate_retail,
+        "healthcare": verticals.generate_healthcare,
+        "hr": verticals.generate_hr,
+        "manufacturing": verticals.generate_manufacturing,
+    })
+
+
+_register_verticals()
+
 
 def generate(key: str, **kwargs: Any) -> DemoDataset:
     if key not in GENERATORS:

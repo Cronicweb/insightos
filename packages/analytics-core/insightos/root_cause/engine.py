@@ -372,7 +372,11 @@ def _decompose(
         r["expected"] = weight * total_delta
         r["excess"] = r["delta"] - r["expected"]
         r["excess_pct"] = (r["excess"] / abs(total_delta) * 100.0) if total_delta else None
-        seg_growth = ((r["c_val"] / r["b_val"]) if r["b_val"] else None)
+        # A segment that exists in the baseline but not in the current period has
+        # ``c_val is None`` - it did not grow by 0%, it stopped reporting - so the
+        # growth gap is undefined rather than -100%.
+        seg_growth = ((r["c_val"] / r["b_val"])
+                      if (r["b_val"] and r["c_val"] is not None) else None)
         r["growth_gap_pp"] = ((seg_growth - overall_growth) * 100.0
                               if seg_growth is not None else None)
 

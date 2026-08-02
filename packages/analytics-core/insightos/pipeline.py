@@ -353,10 +353,27 @@ def _ordered_dimensions(res: AnalysisResult, metric: str, limit: int) -> list[st
     hint = plugin.hint_for(metric)
     preferred = list(hint.decompose_by) if hint else list(plugin.priority_dimensions)
     confounders = set(hint.known_confounders) if hint else set()
-    head = [d for d in preferred if d in available]
-    tail = [d for d in available if d not in head and d not in confounders]
-    deferred = [d for d in available if d in confounders]
+    head = _as_columns(preferred, res.roles, available)
+    confounder_cols = set(_as_columns(sorted(confounders), res.roles, available))
+    tail = [d for d in available if d not in head and d not in confounder_cols]
+    deferred = [d for d in available if d in confounder_cols]
     return (head + tail + deferred)[:limit]
+
+
+def _as_columns(names: list[str], roles: dict, available: list[str]) -> list[str]:
+    """Translate plugin dimension names into the columns this dataset actually has.
+
+    Plugins are written against semantic roles ("segment", "region") because a
+    plugin cannot know that this particular table calls its segment column
+    ``department``. A literal column name is honoured too, so a plugin may pin a
+    well-known physical column when it needs to.
+    """
+    out: list[str] = []
+    for name in names:
+        col = name if name in available else roles.get(name)
+        if col in available and col not in out:
+            out.append(col)
+    return out
 
 
 def _build_narratives(df: pd.DataFrame, res: AnalysisResult, roles: Any
