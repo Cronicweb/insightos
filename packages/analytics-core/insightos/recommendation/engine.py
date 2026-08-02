@@ -56,6 +56,20 @@ class Recommendation:
     evidence: list[Evidence] = field(default_factory=list)
     triggered_by: str = ""
     success_measure: str = ""
+    # ---- governance (populated by recommendation.governance, never by a rule) ---- #
+    suggested_owner: str = ""
+    approval_required: bool = False
+    approval_authority: str = ""
+    audit_trail: list[str] = field(default_factory=list)
+    rules_fired: list[str] = field(default_factory=list)
+    rejected_alternatives: list[dict[str, Any]] = field(default_factory=list)
+    statistical_tests: list[str] = field(default_factory=list)
+    evidence_count: int = 0
+    significance: float | None = None
+    confidence_cap: float | None = None
+    confidence_before_cap: float | None = None
+    data_quality_impact: str = ""
+    review_cadence: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return to_jsonable(asdict(self))
@@ -69,6 +83,8 @@ class RecommendationSet:
     total_estimated_impact: float | None = None
     narrative: str = ""
     rule_errors: list[str] = field(default_factory=list)
+    rejected_alternatives: list[dict[str, Any]] = field(default_factory=list)
+    governance_note: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return to_jsonable(asdict(self))
@@ -684,7 +700,17 @@ def generate_recommendations(ctx: RuleContext, limit: int = 8) -> Recommendation
            if total else ". Impacts are directional where the data does not support "
            "a monetary estimate.")
     )
-    return RecommendationSet(top, len(RULES), fired, total, narrative, errors)
+    dropped = [
+        {
+            "id": r.id,
+            "title": r.title,
+            "priorityScore": r.priority_score,
+            "confidence": r.confidence,
+            "reason": "ranked below the reporting limit for this analysis",
+        }
+        for r in unique[limit:limit + 6]
+    ]
+    return RecommendationSet(top, len(RULES), fired, total, narrative, errors, dropped)
 
 
 def _priority_rank(label: str) -> int:

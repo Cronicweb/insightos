@@ -17,7 +17,7 @@ import pandas as pd
 from ..types import Domain
 from .roles import RoleMap
 
-__all__ = ["KPIDefinition", "KPI_REGISTRY", "kpis_for_domain", "get_kpi"]
+__all__ = ["KPIDefinition", "KPI_REGISTRY", "kpis_for_domain", "get_kpi", "register_kpi"]
 
 Aggregator = Callable[[pd.DataFrame, RoleMap], "float | None"]
 
@@ -430,6 +430,22 @@ _BY_ID = {k.id: k for k in KPI_REGISTRY}
 
 def get_kpi(kpi_id: str) -> KPIDefinition | None:
     return _BY_ID.get(kpi_id)
+
+
+def register_kpi(definition: KPIDefinition) -> KPIDefinition:
+    """Publish a KPI declared by a domain plugin into the shared catalogue.
+
+    Registration is idempotent and last-write-wins on ``id`` so a plugin can
+    deliberately override a generic definition with a domain-correct one (for
+    example, "revenue" meaning *net* revenue in banking).
+    """
+    existing = _BY_ID.get(definition.id)
+    if existing is not None:
+        KPI_REGISTRY[KPI_REGISTRY.index(existing)] = definition
+    else:
+        KPI_REGISTRY.append(definition)
+    _BY_ID[definition.id] = definition
+    return definition
 
 
 def kpis_for_domain(domain: Domain, roles: RoleMap) -> list[KPIDefinition]:

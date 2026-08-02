@@ -29,8 +29,10 @@ from typing import Any
 
 import pandas as pd
 
+from . import plugins as _plugins          # noqa: F401  (import registers domain packs)
 from .anomaly import AnomalyReport, detect_anomalies, detect_segment_anomalies
 from .forecast import Forecast, forecast_series
+from .governance import assess_governance
 from .kpi import compute_kpis, detect_domain, get_kpi, resolve_roles
 from .narrative import (
     ChartNarrative,
@@ -40,9 +42,11 @@ from .narrative import (
     describe_distribution,
     describe_series,
 )
+from .plugins import get_plugin
+from .privacy import detect_sensitive_fields
 from .profiling import infer_schema
 from .quality import assess_quality
-from .recommendation import RuleContext, generate_recommendations
+from .recommendation import RuleContext, apply_governance, generate_recommendations
 from .reporting import ExecutiveReport, build_executive_report
 from .root_cause import analyse_root_cause
 from .types import to_jsonable
@@ -63,6 +67,14 @@ class AnalysisOptions:
     run_forecast: bool = True
     run_anomalies: bool = True
     run_root_cause: bool = True
+    # ---- governance metadata: what this dataset is, and how far it may be trusted ---- #
+    source: str = "uploaded file"
+    source_type: str = "file"
+    owner: str = "Unassigned"
+    allow_drill_down: bool = False       # aggregate-only until explicitly granted
+    run_privacy: bool = True
+    run_governance: bool = True
+    use_plugins: bool = True
 
 
 @dataclass
@@ -83,6 +95,9 @@ class AnalysisResult:
     charts: list[Any] = field(default_factory=list)
     recommendations: Any = None
     report: ExecutiveReport | None = None
+    privacy: Any = None
+    governance: Any = None
+    plugin: Any = None
     timings_ms: dict[str, float] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
 
@@ -105,6 +120,9 @@ class AnalysisResult:
             "recommendations": (self.recommendations.to_dict()
                                 if self.recommendations else None),
             "report": self.report.to_dict() if self.report else None,
+            "privacy": self.privacy.to_dict() if self.privacy else None,
+            "governance": self.governance.to_dict() if self.governance else None,
+            "plugin": self.plugin.to_dict() if self.plugin else None,
             "timings_ms": self.timings_ms,
             "warnings": self.warnings,
         }
@@ -176,6 +194,11 @@ def analyse(df: pd.DataFrame, options: AnalysisOptions | None = None) -> Analysi
     with _Stage(res, "quality"):
         res.quality = assess_quality(df, res.schema)
 
+    if opt.run_privacy:
+        with _Stage(res, "privacy"):
+            res.privacy = detect_sensitive_fields(
+                df, res.schema, drill_down_granted=opt.allow_drill_down)
+
     with _Stage(res, "roles"):
         roles = resolve_roles(df, res.schema)
         res.roles = dict(roles)
@@ -187,6 +210,10 @@ def analyse(df: pd.DataFrame, options: AnalysisOptions | None = None) -> Analysi
         res.domain = detect_domain(df, res.schema, roles)
 
     domain = res.domain.domain if res.domain else None
+
+    if opt.use_plugins:
+        with _Stage(res, "plugin"):
+            res.plugin = get_plugin(domain)
 
     with _Stage(res, "kpis"):
         res.scorecard = compute_kpis(df, roles, domain, max_kpis=opt.max_kpis)
@@ -249,7 +276,7 @@ def analyse(df: pd.DataFrame, options: AnalysisOptions | None = None) -> Analysi
                 tree = analyse_root_cause(
                     df, roles, definition, res.scorecard.date_column,
                     res.scorecard.grain,
-                    (res.schema.dimensions or [])[:opt.max_dimensions],
+                    _ordered_dimensions(res, kpi.id, opt.max_dimensions),
                 )
                 if tree:
                     res.root_causes.append(tree)
@@ -257,12 +284,18 @@ def analyse(df: pd.DataFrame, options: AnalysisOptions | None = None) -> Analysi
     # ---- forecasts ---- #
     if opt.run_forecast:
         with _Stage(res, "forecast"):
-            future_labels = _future_labels(res.scorecard, opt.forecast_horizon)
+            horizon = opt.forecast_horizon
+            if res.plugin is not None:
+                # The plugin knows the planning cycle; forecasting further than the
+                # business plans is precision the data cannot support.
+                horizon = min(horizon, res.plugin.forecast.horizon) or horizon
+                seasonal = seasonal or res.plugin.forecast.seasonal_period
+            future_labels = _future_labels(res.scorecard, horizon)
             for kpi in res.scorecard.kpis[:4]:
                 values = [p.get("value") for p in kpi.series]
                 labels = [p.get("label") or p.get("period") for p in kpi.series]
                 fc = forecast_series(kpi.id, kpi.label, values, labels,
-                                     horizon=opt.forecast_horizon,
+                                     horizon=horizon,
                                      seasonal_period=seasonal,
                                      future_labels=future_labels)
                 if fc:
@@ -286,11 +319,44 @@ def analyse(df: pd.DataFrame, options: AnalysisOptions | None = None) -> Analysi
         )
         res.recommendations = generate_recommendations(ctx, limit=opt.max_recommendations)
 
+    # ---- data governance: how far may this analysis be trusted? ---- #
+    if opt.run_governance:
+        with _Stage(res, "governance"):
+            res.governance = assess_governance(
+                res, source=opt.source, source_type=opt.source_type,
+                owner=opt.owner, privacy=res.privacy, df=df)
+
+    # ---- recommendation governance: ownership, approval, audit, degraded confidence ---- #
+    with _Stage(res, "recommendation_governance"):
+        apply_governance(res.recommendations, plugin=res.plugin,
+                         governance=res.governance)
+
     # ---- executive report ---- #
     with _Stage(res, "report"):
         res.report = build_executive_report(res, polisher=opt.polisher)
 
     return res
+
+
+def _ordered_dimensions(res: AnalysisResult, metric: str, limit: int) -> list[str]:
+    """Rank dimensions the way the domain manages the business.
+
+    The engine can decompose by any dimension. The plugin knows which ones a
+    business in this domain actually holds someone accountable for, so those are
+    investigated first and declared confounders are pushed to the back rather
+    than silently dropped - a rejected branch is still evidence.
+    """
+    available = list(res.schema.dimensions or []) if res.schema else []
+    plugin = res.plugin
+    if plugin is None:
+        return available[:limit]
+    hint = plugin.hint_for(metric)
+    preferred = list(hint.decompose_by) if hint else list(plugin.priority_dimensions)
+    confounders = set(hint.known_confounders) if hint else set()
+    head = [d for d in preferred if d in available]
+    tail = [d for d in available if d not in head and d not in confounders]
+    deferred = [d for d in available if d in confounders]
+    return (head + tail + deferred)[:limit]
 
 
 def _build_narratives(df: pd.DataFrame, res: AnalysisResult, roles: Any

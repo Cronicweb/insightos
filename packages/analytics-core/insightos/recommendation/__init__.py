@@ -8,6 +8,7 @@ from .engine import (
     generate_recommendations,
     rule,
 )
+from .governance import apply_governance, explain_recommendation
 
 __all__ = [
     "Recommendation",
@@ -16,4 +17,6 @@ __all__ = [
     "generate_recommendations",
     "RULES",
     "rule",
+    "apply_governance",
+    "explain_recommendation",
 ]
