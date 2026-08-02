@@ -10,6 +10,8 @@ import { ChartRenderer } from '@/components/charts/chart-renderer';
 import { RootCausePanel } from '@/components/panels/root-cause-panel';
 import { RecommendationsPanel } from '@/components/panels/recommendations-panel';
 import { SqlPanel } from '@/components/panels/sql-panel';
+import { GovernancePanel } from '@/components/panels/governance-panel';
+import { ExecutiveBrief } from '@/components/panels/executive-brief';
 import { ReportPanel } from '@/components/panels/report-panel';
 import { QualityPanel } from '@/components/panels/quality-panel';
 import { AnomaliesPanel } from '@/components/panels/anomalies-panel';
@@ -204,6 +206,7 @@ function Workspace({
     return (
       <div className="space-y-4">
         <DatasetHeader analysis={analysis} onTab={onTab} />
+        <ExecutiveBrief analysis={analysis} onTab={onTab} />
         {kpi ? <HeroMetric kpi={kpi} spec={hero} analysis={analysis} /> : null}
 
         {marimekko ? <ChartRenderer spec={marimekko} height={300} /> : null}
@@ -249,6 +252,19 @@ function Workspace({
       <div className="space-y-4">
         <DatasetHeader analysis={analysis} onTab={onTab} />
         <QualityPanel analysis={analysis} chart={chart('quality.dimensions')} />
+      </div>
+    );
+  }
+
+  if (tab === 'governance') {
+    return (
+      <div className="space-y-4">
+        <DatasetHeader analysis={analysis} onTab={onTab} />
+        {analysis.governance || analysis.privacy ? (
+          <GovernancePanel governance={analysis.governance} privacy={analysis.privacy} />
+        ) : (
+          <EmptyState message="This analysis was produced before the governance layer existed, so no lineage or privacy metadata is attached." />
+        )}
       </div>
     );
   }

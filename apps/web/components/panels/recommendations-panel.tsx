@@ -3,8 +3,9 @@
 import * as React from 'react';
 import { ChevronDown, Lightbulb } from 'lucide-react';
 import type { Recommendation, RecommendationSet } from '@/lib/types';
-import { fixed, formatPValue, formatValue, titleCase } from '@/lib/format';
-import { Badge, SectionLabel } from '../ui/primitives';
+import { formatValue, titleCase } from '@/lib/format';
+import { SectionLabel } from '../ui/primitives';
+import { ExplainabilityPanel } from './explainability-panel';
 import { SEVERITY_STYLE, cn } from '@/lib/utils';
 
 /**
@@ -31,6 +32,11 @@ export function RecommendationsPanel({ set }: { set: RecommendationSet }) {
           <SectionLabel>Recommended actions</SectionLabel>
         </div>
         <p className="mt-2 max-w-3xl text-[13px] leading-relaxed text-muted">{set.narrative}</p>
+        {set.governance_note ? (
+          <p className="mt-2 max-w-3xl border-l-2 border-warning/60 pl-3 text-2xs leading-relaxed text-subtle">
+            {set.governance_note}
+          </p>
+        ) : null}
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <FilterChip active={category === 'all'} onClick={() => setCategory('all')}>
             All {set.recommendations.length}
@@ -125,51 +131,12 @@ function RecommendationCard({ rec }: { rec: Recommendation }) {
           onClick={() => setOpen((s) => !s)}
           className="flex w-full items-center justify-between px-5 py-3 text-2xs font-semibold uppercase tracking-[0.08em] text-subtle hover:text-ink"
         >
-          Why this fired &middot; {rec.evidence.length} evidence rows
+          Why this fired &middot; {rec.evidence_count ?? rec.evidence.length} evidence rows
           <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-180')} />
         </button>
         {open ? (
-          <div className="space-y-3 border-t border-line bg-elevated/50 px-5 py-4">
-            <p className="text-[13px] leading-relaxed text-muted">{rec.rationale}</p>
-            <div className="flex flex-wrap gap-2">
-              <Badge tone="neutral">rule: {rec.triggered_by}</Badge>
-              <Badge tone="neutral">confidence {fixed(rec.confidence * 100, 0)}%</Badge>
-              {rec.metric ? <Badge tone="neutral">metric: {rec.metric}</Badge> : null}
-              {rec.dimension ? (
-                <Badge tone="neutral">
-                  {rec.dimension}
-                  {rec.segment ? ` = ${rec.segment}` : ''}
-                </Badge>
-              ) : null}
-            </div>
-            <table className="w-full text-2xs">
-              <tbody className="divide-y divide-line">
-                {rec.evidence.map((e, i) => (
-                  <tr key={i}>
-                    <td className="py-1.5 pr-3 text-muted">{e.label}</td>
-                    <td className="py-1.5 pr-3 text-right font-medium tabular">
-                      {typeof e.value === 'number'
-                        ? e.value.toLocaleString()
-                        : (e.value ?? '\u2014')}
-                    </td>
-                    <td className="py-1.5 text-right text-subtle">
-                      {e.method ?? ''}
-                      {e.p_value != null ? ` \u00b7 ${formatPValue(e.p_value)}` : ''}
-                      {e.sample_size != null ? ` \u00b7 n=${e.sample_size.toLocaleString()}` : ''}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <p className="border-t border-line pt-3 text-2xs text-subtle">
-              <span className="font-semibold text-muted">Measure success by:</span>{' '}
-              {rec.success_measure}
-            </p>
-            {rec.impact_basis ? (
-              <p className="text-2xs text-subtle">
-                <span className="font-semibold text-muted">Impact basis:</span> {rec.impact_basis}
-              </p>
-            ) : null}
+          <div className="border-t border-line bg-elevated/50 px-5 py-4">
+            <ExplainabilityPanel rec={rec} />
           </div>
         ) : null}
       </div>

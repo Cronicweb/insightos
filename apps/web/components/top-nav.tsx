@@ -9,6 +9,7 @@ export type WorkspaceTab =
   | 'overview'
   | 'root-cause'
   | 'quality'
+  | 'governance'
   | 'forecast'
   | 'actions'
   | 'sql'
@@ -18,6 +19,7 @@ const TABS: { id: WorkspaceTab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'root-cause', label: 'Root Cause' },
   { id: 'quality', label: 'Data Quality' },
+  { id: 'governance', label: 'Governance' },
   { id: 'forecast', label: 'Forecast' },
   { id: 'actions', label: 'Actions' },
   { id: 'sql', label: 'SQL' },

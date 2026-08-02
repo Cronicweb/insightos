@@ -240,6 +240,37 @@ export interface Recommendation {
   evidence: Evidence[];
   triggered_by: string;
   success_measure: string;
+
+  /*
+   * Governance envelope. A recommendation that only says "increase budget" is
+   * not actionable and not auditable, so the engine attaches who should own it,
+   * whether it needs sign-off, and the trail of decisions that produced it.
+   * Optional because the browser engine emits a leaner recommendation set.
+   */
+  suggested_owner?: string;
+  approval_required?: boolean;
+  approval_authority?: string;
+  audit_trail?: string[];
+  review_cadence?: string;
+
+  /* Explainability. Answers "why did this fire, and what did it rule out?" */
+  rules_fired?: string[];
+  rejected_alternatives?: RejectedAlternative[] | string[];
+  statistical_tests?: string[];
+  evidence_count?: number;
+  significance?: number | null;
+  confidence_cap?: number | null;
+  confidence_before_cap?: number | null;
+  data_quality_impact?: string;
+}
+
+/** A candidate the rule engine considered and discarded, with the reason. */
+export interface RejectedAlternative {
+  id?: string;
+  title?: string;
+  rule?: string;
+  reason: string;
+  detail?: string;
 }
 
 export interface RecommendationSet {
@@ -249,6 +280,8 @@ export interface RecommendationSet {
   total_estimated_impact: number | null;
   narrative: string;
   rule_errors: string[];
+  rejected_alternatives?: RejectedAlternative[] | string[];
+  governance_note?: string;
 }
 
 export interface QualityDimension {
@@ -416,6 +449,91 @@ export interface DomainDetection {
   rationale: string;
 }
 
+
+/* ------------------------------------------------------------------ *
+ * Privacy and governance
+ *
+ * Analytics on a real business dataset is a privacy event. The engine
+ * detects sensitive columns before anything is charted, masks them, and
+ * records what it did so the decision is reviewable rather than implicit.
+ * ------------------------------------------------------------------ */
+
+export interface SensitiveField {
+  column: string;
+  category: string;
+  confidence: number;
+  detected_by: string;
+  rationale: string;
+  /** Python analytics-core wording. */
+  policy?: string;
+  /** Browser engine wording for the same concept. */
+  strategy?: string;
+  label?: string;
+  example_masked?: string | null;
+  sample_masked?: string | null;
+  distinct_values?: number | null;
+}
+
+export interface PrivacyReport {
+  fields: SensitiveField[];
+  masked_columns: string[];
+  aggregate_only_columns?: string[];
+  drilldown_allowed?: boolean;
+  notice?: string;
+  summary?: string;
+}
+
+export interface Freshness {
+  asOf: string | null;
+  lagDays: number | null;
+  grain: string | null;
+  status: string;
+  detail: string;
+}
+
+export interface GovernanceCheck {
+  id: string;
+  name: string;
+  status: 'passed' | 'warned' | 'failed' | string;
+  detail: string;
+}
+
+/**
+ * Decision readiness is the question an executive actually asks: can I act on
+ * this number? It is derived from quality, freshness and the governance checks,
+ * and it caps the confidence any recommendation is allowed to claim.
+ */
+export interface GovernanceReport {
+  dataset: string;
+  source: string;
+  sourceType: string;
+  owner: string;
+  steward: string;
+  classification: string;
+  retention: string;
+  freshness: Freshness;
+  qualityScore: number;
+  qualityGrade: string;
+  trustLevel: string;
+  decisionReadiness: 'exploratory' | 'operational' | 'executive_ready' | 'blocked' | string;
+  confidenceCap: number;
+  readinessReasons: string[];
+  checks?: GovernanceCheck[];
+  lineage?: string[];
+  summary?: string;
+}
+
+export interface PluginInfo {
+  key: string;
+  domain: string;
+  label: string;
+  description: string;
+  kpis: string[];
+  priorityDimensions: string[];
+  rootCauseHints?: unknown[];
+  recommendationRules?: unknown[];
+}
+
 /** The full payload written by `insightos demo build`. */
 export interface Analysis {
   key: string;
@@ -436,6 +554,9 @@ export interface Analysis {
   report: ExecutiveReport;
   timings_ms: Record<string, number>;
   warnings: string[];
+  privacy?: PrivacyReport;
+  governance?: GovernanceReport;
+  plugin?: PluginInfo;
   groundTruth?: Record<string, unknown>;
 }
 
