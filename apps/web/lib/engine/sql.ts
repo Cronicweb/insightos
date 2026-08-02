@@ -56,7 +56,18 @@ export async function queryOne<T extends Row = Row>(conn: AsyncDuckDBConnection,
 /** Coerce a SQL scalar to a finite number, or null. */
 export function num(value: unknown): number | null {
   if (value === null || value === undefined) return null;
-  const n = typeof value === 'number' ? value : Number(value);
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'bigint') return Number(value);
+  // DuckDB widens integer sums to HUGEINT; Arrow hands those back as
+  // little-endian 32-bit words, which Number() turns into NaN.
+  if (value instanceof Uint32Array) {
+    let acc = 0n;
+    for (let i = value.length - 1; i >= 0; i -= 1) acc = (acc << 32n) | BigInt(value[i]);
+    const bits = BigInt(value.length * 32);
+    const signed = acc >= 1n << (bits - 1n) ? acc - (1n << bits) : acc;
+    return Number(signed);
+  }
+  const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
 

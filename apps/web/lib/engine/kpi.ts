@@ -153,7 +153,7 @@ export async function buildScorecard(
 
   // A dataset with no date column still deserves a scorecard - it just has a
   // single period and therefore no trend.
-  const selects = usable.map((d) => `${expressions[d.id]} AS ${ident(d.id)}`);
+  const selects = usable.map((d) => `CAST(${expressions[d.id]} AS DOUBLE) AS ${ident(d.id)}`);
   const rows = dateColumn
     ? await query<Record<string, unknown>>(
         conn,
