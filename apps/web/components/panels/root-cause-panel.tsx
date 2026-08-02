@@ -44,7 +44,7 @@ export function RootCausePanel({ tree }: { tree: RootCauseTree }) {
               <Badge tone="accent">Confidence {fixed(tree.confidence * 100, 0)}%</Badge>
             </div>
           </div>
-          <dl className="grid shrink-0 grid-cols-3 gap-x-6 gap-y-1 text-right">
+          <dl className="grid w-full grid-cols-3 gap-x-4 gap-y-1 sm:w-auto sm:shrink-0 sm:gap-x-6 sm:text-right">
             <Figure label={tree.baseline_period} value={formatValue(tree.baseline_value, unit)} />
             <Figure label={tree.current_period} value={formatValue(tree.current_value, unit)} />
             <Figure

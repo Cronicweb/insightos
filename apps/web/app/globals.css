@@ -31,22 +31,23 @@
 }
 
 .dark {
-  --canvas: 13 16 24;
-  --surface: 22 26 36;
-  --elevated: 29 34 46;
-  --line: 45 52 68;
-  --ink: 234 238 246;
-  --muted: 152 162 182;
-  --subtle: 114 124 144;
-  --accent: 130 163 255;
+  --canvas: 10 10 13;
+  --surface: 20 20 25;
+  --elevated: 29 29 36;
+  --line: 43 43 53;
+  --ink: 237 238 243;
+  --muted: 154 156 170;
+  --subtle: 116 118 133;
+  --accent: 138 166 255;
   --positive: 74 200 152;
   --negative: 246 116 132;
   --warning: 226 163 62;
 
-  /* Same geometry after dark: indigo north-west, teal south-east. */
-  --grad-1: 20 26 44;
-  --grad-2: 13 16 24;
-  --grad-3: 15 30 30;
+  /* Aurora stops: mint, teal, ember, violet -- see the .dark body rule. */
+  --aurora-1: 76 214 168;
+  --aurora-2: 46 178 200;
+  --aurora-3: 236 86 58;
+  --aurora-4: 150 58 214;
 }
 
 html,
@@ -92,6 +93,26 @@ body {
   background-clip: content-box;
 }
 
+/*
+ * Dark mode swaps the pastel wash for an aurora: four wide radial bleeds
+ * anchored above the viewport, then a vertical fade that dissolves them into
+ * near-black by ~45% height. Cards below that line sit on flat #14141a, so the
+ * colour is pure atmosphere and never lands behind a number.
+ */
+.dark body {
+  background-image:
+    linear-gradient(
+      180deg,
+      rgb(var(--canvas) / 0) 0%,
+      rgb(var(--canvas) / 0.55) 26%,
+      rgb(var(--canvas)) 46%
+    ),
+    radial-gradient(115% 62% at 6% -18%, rgb(var(--aurora-1) / 0.5) 0%, transparent 60%),
+    radial-gradient(105% 58% at 32% -22%, rgb(var(--aurora-2) / 0.48) 0%, transparent 62%),
+    radial-gradient(115% 64% at 69% -20%, rgb(var(--aurora-3) / 0.52) 0%, transparent 60%),
+    radial-gradient(115% 66% at 98% -16%, rgb(var(--aurora-4) / 0.5) 0%, transparent 62%);
+}
+
 @layer utilities {
   .tabular {
     font-variant-numeric: tabular-nums;
@@ -102,6 +123,14 @@ body {
   /* Lets the fixed body gradient read through the app shell. */
   .canvas-gradient {
     background-color: transparent;
+  }
+  /* Horizontal tab/segment scrollers on touch: swipeable, no visible track. */
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
   }
 }
 

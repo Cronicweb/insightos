@@ -26,6 +26,17 @@ export default function Page() {
   const [selectedKpi, setSelectedKpi] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
+  const [navOpen, setNavOpen] = React.useState(false);
+
+  // While the mobile drawer is open the page behind it must not scroll away.
+  React.useEffect(() => {
+    if (!navOpen) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [navOpen]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -76,7 +87,12 @@ export default function Page() {
 
   return (
     <div className="canvas-gradient flex min-h-screen flex-col text-ink">
-      <TopNav tab={tab} onTabChange={setTab} engineVersion={engineVersion} />
+      <TopNav
+        tab={tab}
+        onTabChange={setTab}
+        engineVersion={engineVersion}
+        onMenu={() => setNavOpen(true)}
+      />
 
       <div className="flex flex-1 flex-col lg:flex-row">
         <Sidebar
@@ -89,9 +105,11 @@ export default function Page() {
             setSelectedKpi(id);
             setTab('overview');
           }}
+          open={navOpen}
+          onClose={() => setNavOpen(false)}
         />
 
-        <main className="min-w-0 flex-1 p-4 lg:p-6">
+        <main className="min-w-0 flex-1 p-3 sm:p-4 lg:p-6">
           {error ? <ErrorState message={error} /> : null}
           {!error && (loading || !analysis) ? <LoadingState /> : null}
           {!error && analysis && !loading ? (
@@ -100,7 +118,7 @@ export default function Page() {
         </main>
       </div>
 
-      <footer className="border-t border-line px-6 py-5 text-2xs text-subtle">
+      <footer className="border-t border-line px-3 py-5 sm:px-4 lg:px-6 text-2xs text-subtle">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
           <span>
             InsightOS &mdash; deterministic analytics engine
@@ -111,7 +129,7 @@ export default function Page() {
               ? 'Demo mode: rendering pre-computed engine output, no server required.'
               : 'Live mode: connected to the InsightOS API.'}
           </span>
-          <span className="ml-auto">
+          <span className="lg:ml-auto">
             MIT licensed &middot; every number on this page was computed, not written.
           </span>
         </div>
@@ -229,11 +247,11 @@ function DatasetHeader({
   const totalMs = Object.values(analysis.timings_ms).reduce((a, b) => a + b, 0);
 
   return (
-    <header className="rounded-2xl border border-line bg-surface p-5 shadow-card">
+    <header className="rounded-2xl border border-line bg-surface p-4 shadow-card sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <SectionLabel>Dataset</SectionLabel>
-          <h1 className="mt-1.5 text-xl font-semibold tracking-tight">{analysis.dataset}</h1>
+          <h1 className="mt-1.5 text-lg font-semibold tracking-tight sm:text-xl">{analysis.dataset}</h1>
           <p className="mt-1.5 max-w-3xl text-[13px] leading-relaxed text-muted">
             {analysis.story}
           </p>
@@ -255,7 +273,7 @@ function DatasetHeader({
 
       <div className="mt-4 flex flex-wrap gap-x-6 gap-y-1 border-t border-line pt-3 text-2xs text-subtle">
         <span>{analysis.domain.rationale}</span>
-        <span className="ml-auto">Full pipeline computed in {fixed(totalMs / 1000, 2)}s</span>
+        <span className="sm:ml-auto">Full pipeline computed in {fixed(totalMs / 1000, 2)}s</span>
       </div>
 
       {analysis.warnings.length ? (

@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Search, ChevronRight, Database, Gauge, AlertTriangle, Lightbulb } from 'lucide-react';
+import { Search, ChevronRight, Database, Gauge, AlertTriangle, Lightbulb, X } from 'lucide-react';
 import type { Analysis, DatasetSummary } from '@/lib/types';
 import { fixed, formatInt, formatValue, titleCase } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -10,6 +10,10 @@ import { DeltaPill, Kbd } from './ui/primitives';
 /**
  * Left rail: dataset switcher on top, then a searchable, expandable KPI list -
  * the structural analogue of the account tree in the reference design.
+ *
+ * Below `lg` the rail would otherwise push ~900px of chrome above the first
+ * chart, so it becomes an off-canvas drawer instead: the phone opens on the
+ * analysis, and the navigator is one tap away.
  */
 export function Sidebar({
   datasets,
@@ -18,6 +22,8 @@ export function Sidebar({
   analysis,
   selectedKpi,
   onSelectKpi,
+  open,
+  onClose,
 }: {
   datasets: DatasetSummary[];
   activeKey: string;
@@ -25,6 +31,8 @@ export function Sidebar({
   analysis: Analysis | null;
   selectedKpi: string | null;
   onSelectKpi: (id: string) => void;
+  open: boolean;
+  onClose: () => void;
 }) {
   const [query, setQuery] = React.useState('');
   const [expanded, setExpanded] = React.useState<Record<string, boolean>>({});
@@ -41,6 +49,15 @@ export function Sidebar({
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
+  React.useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
   const kpis = analysis?.scorecard?.kpis ?? [];
   const needle = query.trim().toLowerCase();
   const visible = needle
@@ -55,7 +72,36 @@ export function Sidebar({
   const primary = analysis?.scorecard?.primary_kpi_id;
 
   return (
-    <aside className="flex w-full flex-col gap-3 lg:w-[300px] lg:shrink-0">
+    <>
+      <div
+        onClick={onClose}
+        aria-hidden
+        className={cn(
+          'fixed inset-0 z-40 bg-black/45 backdrop-blur-sm transition-opacity lg:hidden',
+          open ? 'opacity-100' : 'pointer-events-none opacity-0',
+        )}
+      />
+
+      <aside
+        className={cn(
+          'fixed inset-y-0 left-0 z-50 flex w-[86%] max-w-[330px] flex-col gap-3 overflow-y-auto overscroll-contain bg-canvas p-3 transition-transform duration-200 ease-out',
+          'lg:static lg:z-auto lg:w-[300px] lg:max-w-none lg:shrink-0 lg:translate-x-0 lg:overflow-visible lg:bg-transparent lg:p-0',
+          open ? 'translate-x-0' : '-translate-x-full',
+        )}
+      >
+        <div className="flex items-center justify-between px-1 pb-1 lg:hidden">
+          <span className="text-2xs font-semibold uppercase tracking-[0.08em] text-subtle">
+            Navigator
+          </span>
+          <button
+            onClick={onClose}
+            aria-label="Close navigator"
+            className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-elevated hover:text-ink"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
       <div className="rounded-2xl border border-line bg-surface shadow-card">
         <div className="relative p-3">
           <Search className="pointer-events-none absolute left-6 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-subtle" />
@@ -64,9 +110,9 @@ export function Sidebar({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search metrics"
-            className="w-full rounded-xl border border-line bg-elevated py-2 pl-8 pr-14 text-[13px] outline-none placeholder:text-subtle focus:border-accent/50"
+            className="w-full rounded-xl border border-line bg-elevated py-2.5 pl-8 pr-3 text-[13px] outline-none placeholder:text-subtle focus:border-accent/50 lg:py-2 lg:pr-14"
           />
-          <span className="pointer-events-none absolute right-6 top-1/2 -translate-y-1/2">
+          <span className="pointer-events-none absolute right-6 top-1/2 hidden -translate-y-1/2 lg:block">
             <Kbd>&#8984;K</Kbd>
           </span>
         </div>
@@ -81,7 +127,10 @@ export function Sidebar({
               return (
                 <button
                   key={d.key}
-                  onClick={() => onSelect(d.key)}
+                  onClick={() => {
+                    onSelect(d.key);
+                    onClose();
+                  }}
                   className={cn(
                     'w-full rounded-xl border px-3 py-2.5 text-left transition-colors',
                     active
@@ -126,7 +175,7 @@ export function Sidebar({
           <span className="text-2xs text-subtle">{kpis.length}</span>
         </div>
 
-        <div className="max-h-[560px] overflow-y-auto px-2 pb-3">
+        <div className="px-2 pb-3 lg:max-h-[560px] lg:overflow-y-auto">
           {visible.length === 0 ? (
             <p className="px-2 py-6 text-center text-xs text-subtle">
               No metric matches &ldquo;{query}&rdquo;.
@@ -147,14 +196,17 @@ export function Sidebar({
                   <button
                     onClick={() => setExpanded((s) => ({ ...s, [k.id]: !open }))}
                     aria-label={open ? 'Collapse' : 'Expand'}
-                    className="grid h-5 w-5 shrink-0 place-items-center rounded text-subtle hover:text-ink"
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded text-subtle hover:text-ink lg:h-5 lg:w-5"
                   >
                     <ChevronRight
                       className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-90')}
                     />
                   </button>
                   <button
-                    onClick={() => onSelectKpi(k.id)}
+                    onClick={() => {
+                      onSelectKpi(k.id);
+                      onClose();
+                    }}
                     className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left"
                   >
                     <span className="min-w-0">
@@ -209,8 +261,9 @@ export function Sidebar({
         </div>
       </div>
 
-      {analysis ? <SidebarFooter analysis={analysis} /> : null}
-    </aside>
+        {analysis ? <SidebarFooter analysis={analysis} /> : null}
+      </aside>
+    </>
   );
 }
 
