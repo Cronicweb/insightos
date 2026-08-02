@@ -1,0 +1,27 @@
+name: insightos
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: insightos/api:latest
+    environment:
+      INSIGHTOS_CORS_ORIGINS: "http://localhost:3000,http://localhost:8080"
+      INSIGHTOS_MAX_UPLOAD_MB: "50"
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_DATA_MODE: static
+    image: insightos/web:latest
+    depends_on:
+      - api
+    ports:
+      - "8080:80"
+    restart: unless-stopped

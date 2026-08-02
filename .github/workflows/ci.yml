@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  engine:
+    name: Analytics engine (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install engine
+        working-directory: packages/analytics-core
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Lint
+        working-directory: packages/analytics-core
+        run: ruff check insightos tests
+
+      - name: Test
+        working-directory: packages/analytics-core
+        run: pytest -q
+
+  api:
+    name: API contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install ./packages/analytics-core
+          pip install -r apps/api/requirements.txt httpx
+      - name: Smoke the service
+        run: |
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, "apps/api")
+          from fastapi.testclient import TestClient
+          from insightos_api.main import app
+
+          client = TestClient(app)
+          assert client.get("/health").json()["status"] == "ok"
+          payload = client.get("/datasets").json()
+          assert len(payload["datasets"]) == 3, payload
+          analysis = client.get("/datasets/marketing/analysis").json()
+          for key in ("schema", "quality", "scorecard", "charts", "recommendations", "report"):
+              assert key in analysis, key
+          # The project's headline invariant, asserted at the transport boundary.
+          for chart in analysis["charts"]:
+              assert chart["narrative"]["headline"], chart["id"]
+          print("api contract ok")
+          PY
+
+  web:
+    name: Web client
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install
+        run: npm install --no-audit --no-fund
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+  demo-data:
+    name: Static demo data is current
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ./packages/analytics-core
+      - name: Regenerate and compare
+        run: |
+          insightos demo build --out /tmp/demo
+          for f in index.json banking.json ecommerce.json marketing.json; do
+            test -f "/tmp/demo/$f" || { echo "missing $f"; exit 1; }
+          done
+          echo "demo build reproduced cleanly"
