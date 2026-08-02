@@ -34,7 +34,7 @@ export function TopNav({
   const { theme, toggle } = useTheme();
 
   return (
-    <header className="sticky top-0 z-40 border-b border-line bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/80">
+    <header className="sticky top-0 z-40 border-b border-line bg-surface/85 backdrop-blur-xl supports-[backdrop-filter]:bg-surface/65">
       <div className="flex h-14 items-center gap-6 px-4 sm:px-6">
         <div className="flex shrink-0 items-center gap-2">
           <div className="grid h-7 w-7 place-items-center rounded-lg bg-ink text-canvas">

@@ -3,33 +3,50 @@
 @tailwind utilities;
 
 :root {
-  --font-sans: 'Inter', 'Inter var', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-    'Helvetica Neue', Arial, sans-serif;
-  --canvas: 244 245 247;
+  --font-sans: var(--font-jakarta), 'Plus Jakarta Sans', -apple-system,
+    BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+  /* Flat token used wherever a solid fallback is needed (canvas is a gradient). */
+  --canvas: 232 239 252;
   --surface: 255 255 255;
-  --elevated: 250 250 251;
-  --line: 228 230 235;
-  --ink: 15 23 42;
-  --muted: 100 108 124;
-  --subtle: 148 156 170;
-  --accent: 37 99 235;
-  --positive: 22 128 92;
-  --negative: 190 42 62;
-  --warning: 176 106 12;
+  --elevated: 244 248 255;
+  --line: 219 228 243;
+  --ink: 17 24 39;
+  --muted: 94 106 128;
+  --subtle: 141 152 173;
+  --accent: 79 111 214;
+  --positive: 26 140 106;
+  --negative: 199 62 74;
+  --warning: 190 122 22;
+
+  /*
+   * The canvas is a three-stop pastel wash: periwinkle in the north-west,
+   * a neutral bridge through the middle, mint in the south-east. Cards stay
+   * opaque white so every number keeps a >12:1 contrast ratio -- the gradient
+   * carries the mood, never the data.
+   */
+  --grad-1: 214 227 250;
+  --grad-2: 232 240 252;
+  --grad-3: 218 238 228;
 }
 
 .dark {
-  --canvas: 13 15 20;
-  --surface: 22 25 32;
-  --elevated: 28 32 40;
-  --line: 44 49 60;
-  --ink: 235 238 243;
-  --muted: 154 162 176;
-  --subtle: 116 124 138;
-  --accent: 96 150 255;
-  --positive: 61 190 138;
+  --canvas: 13 16 24;
+  --surface: 22 26 36;
+  --elevated: 29 34 46;
+  --line: 45 52 68;
+  --ink: 234 238 246;
+  --muted: 152 162 182;
+  --subtle: 114 124 144;
+  --accent: 130 163 255;
+  --positive: 74 200 152;
   --negative: 246 116 132;
   --warning: 226 163 62;
+
+  /* Same geometry after dark: indigo north-west, teal south-east. */
+  --grad-1: 20 26 44;
+  --grad-2: 13 16 24;
+  --grad-3: 15 30 30;
 }
 
 html,
@@ -39,9 +56,18 @@ body {
 
 body {
   background-color: rgb(var(--canvas));
+  background-image: linear-gradient(
+    135deg,
+    rgb(var(--grad-1)) 0%,
+    rgb(var(--grad-2)) 48%,
+    rgb(var(--grad-3)) 100%
+  );
+  background-attachment: fixed;
   color: rgb(var(--ink));
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  letter-spacing: -0.011em;
+  font-feature-settings: 'cv11', 'ss01';
 }
 
 * {
@@ -72,6 +98,10 @@ body {
   }
   .card {
     @apply rounded-2xl border border-line bg-surface shadow-card;
+  }
+  /* Lets the fixed body gradient read through the app shell. */
+  .canvas-gradient {
+    background-color: transparent;
   }
 }
 

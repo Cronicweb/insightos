@@ -75,7 +75,7 @@ export default function Page() {
   }, [analysis, selectedKpi]);
 
   return (
-    <div className="flex min-h-screen flex-col bg-canvas text-ink">
+    <div className="canvas-gradient flex min-h-screen flex-col text-ink">
       <TopNav tab={tab} onTabChange={setTab} engineVersion={engineVersion} />
 
       <div className="flex flex-1 flex-col lg:flex-row">
