@@ -52,19 +52,19 @@ export function TopNav({
           </div>
           <span className="text-[17px] font-semibold tracking-tight">InsightOS</span>
           {engineVersion ? (
-            <span className="hidden rounded-md border border-line px-1.5 py-0.5 text-2xs text-subtle sm:inline">
+            <span className="hidden whitespace-nowrap rounded-md border border-line px-1.5 py-0.5 text-2xs text-subtle sm:inline lg:hidden xl:inline">
               engine v{engineVersion}
             </span>
           ) : null}
         </div>
 
-        <nav className="hidden flex-1 items-center justify-center gap-1 lg:flex">
+        <nav className="no-scrollbar hidden min-w-0 flex-1 items-center justify-center gap-1 overflow-x-auto lg:flex">
           {TABS.map((t) => (
             <button
               key={t.id}
               onClick={() => onTabChange(t.id)}
               className={cn(
-                'rounded-lg px-3 py-1.5 text-[13px] transition-colors',
+                'shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-[13px] transition-colors',
                 tab === t.id
                   ? 'bg-elevated font-semibold text-ink'
                   : 'text-muted hover:text-ink',
@@ -76,7 +76,7 @@ export function TopNav({
         </nav>
 
         <div className="ml-auto flex shrink-0 items-center gap-0.5 sm:gap-1.5">
-          <span className="mr-1 hidden items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-2xs text-muted md:inline-flex">
+          <span className="mr-1 hidden items-center gap-1.5 whitespace-nowrap rounded-full border border-line px-2.5 py-1 text-2xs text-muted xl:inline-flex">
             <span className="h-1.5 w-1.5 rounded-full bg-positive" />
             Demo mode &middot; static engine output
           </span>
