@@ -19,6 +19,8 @@ import { ForecastPanel } from '@/components/panels/forecast-panel';
 import { Badge, SectionLabel, Skeleton } from '@/components/ui/primitives';
 import { fixed, formatInt, formatPct, titleCase } from '@/lib/format';
 import { UploadDialog } from '@/components/upload/upload-dialog';
+import { LandingPage } from '@/components/landing/landing-page';
+import { MobileNav } from '@/components/mobile-nav';
 import { AlertCircle, Upload } from 'lucide-react';
 
 export default function Page() {
@@ -34,6 +36,13 @@ export default function Page() {
   const [uploadOpen, setUploadOpen] = React.useState(false);
   // An uploaded dataset is held only in memory; it is never added to the demo index.
   const [uploaded, setUploaded] = React.useState<{ label: string; analysis: Analysis } | null>(null);
+  // The landing page is the default surface; the workspace mounts once a
+  // dataset has been chosen. #workspace deep-links straight into it.
+  const [entered, setEntered] = React.useState(false);
+
+  React.useEffect(() => {
+    if (window.location.hash === '#workspace') setEntered(true);
+  }, []);
 
   // While the mobile drawer is open the page behind it must not scroll away.
   React.useEffect(() => {
@@ -63,7 +72,7 @@ export default function Page() {
   }, []);
 
   React.useEffect(() => {
-    if (!activeKey || uploaded) return;
+    if (!entered || !activeKey || uploaded) return;
     let cancelled = false;
     setLoading(true);
     fetchAnalysis(activeKey)
@@ -81,7 +90,7 @@ export default function Page() {
     return () => {
       cancelled = true;
     };
-  }, [activeKey, uploaded]);
+  }, [entered, activeKey, uploaded]);
 
   const kpi = React.useMemo(() => {
     if (!analysis) return null;
@@ -92,13 +101,54 @@ export default function Page() {
     );
   }, [analysis, selectedKpi]);
 
+  if (!entered) {
+    return (
+      <>
+        <LandingPage
+          datasets={datasets}
+          engineVersion={engineVersion}
+          onTryDemo={(key) => {
+            if (key) setActiveKey(key);
+            setUploaded(null);
+            setTab('overview');
+            setEntered(true);
+          }}
+          onUpload={() => setUploadOpen(true)}
+        />
+        <UploadDialog
+          open={uploadOpen}
+          onClose={() => setUploadOpen(false)}
+          onAnalysed={(a, label) => {
+            setUploaded({ label, analysis: a });
+            setAnalysis(a);
+            setSelectedKpi(a.scorecard.primary_kpi_id ?? a.scorecard.kpis[0]?.id ?? null);
+            setTab('overview');
+            setError(null);
+            setLoading(false);
+            setEntered(true);
+          }}
+        />
+      </>
+    );
+  }
+
   return (
     <div className="canvas-gradient flex min-h-screen flex-col text-ink">
+      <a
+        href="#workspace-main"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-accent focus:px-4 focus:py-2 focus:text-white"
+      >
+        Skip to analysis
+      </a>
       <TopNav
         tab={tab}
         onTabChange={setTab}
         engineVersion={engineVersion}
         onMenu={() => setNavOpen(true)}
+        onHome={() => {
+          if (window.location.hash) window.history.replaceState(null, '', window.location.pathname);
+          setEntered(false);
+        }}
       />
 
       <UploadDialog
@@ -132,7 +182,7 @@ export default function Page() {
           onClose={() => setNavOpen(false)}
         />
 
-        <main className="min-w-0 flex-1 p-3 sm:p-4 lg:p-6">
+        <main id="workspace-main" className="min-w-0 flex-1 p-3 pb-24 sm:p-4 sm:pb-24 lg:p-6 lg:pb-6">
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <button
               onClick={() => setUploadOpen(true)}
@@ -178,6 +228,8 @@ export default function Page() {
           </span>
         </div>
       </footer>
+
+      <MobileNav tab={tab} onTabChange={setTab} />
     </div>
   );
 }
