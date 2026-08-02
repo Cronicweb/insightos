@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Methodology
+    url: https://github.com/Cronicweb/insightos/blob/main/docs/methodology.md
+    about: How every published number is computed, before filing a correctness issue.
