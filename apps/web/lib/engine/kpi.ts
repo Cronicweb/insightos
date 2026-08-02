@@ -17,28 +17,69 @@ export type Grain = 'day' | 'week' | 'month' | 'quarter';
 
 const GRAIN_LABEL: Record<Grain, string> = { day: 'Day', week: 'Week', month: 'Month', quarter: 'Quarter' };
 
+const GRAIN_ORDER: Grain[] = ['day', 'week', 'month', 'quarter'];
+
+/** A trend test on fewer than this many periods is not worth running. */
+const MIN_PERIODS = 4;
+/** Below this, periods are so sparse that COUNT(DISTINCT ...) degenerates to 1. */
+const MIN_ROWS_PER_PERIOD = 3;
+
 /**
- * Choose the finest grain that still yields enough periods to reason about.
- * Fewer than four periods makes a trend test meaningless, so we coarsen only
- * when the span is long enough to justify it.
+ * Choose the finest grain that still yields enough periods *and* enough rows
+ * inside each period to reason about.
+ *
+ * Span alone is not enough. A 42-row extract spread over seven months spans
+ * 205 days, which naively suggests a weekly grain - but that yields thirty
+ * buckets holding a single row each, so `COUNT(DISTINCT order_id)` reports 1
+ * and every delta becomes noise. We therefore measure actual bucket density
+ * and coarsen until each period carries a defensible number of observations.
  */
 export async function chooseGrain(
   conn: duckdb.AsyncDuckDBConnection,
   table: string,
   dateColumn: string,
 ): Promise<Grain> {
-  const rows = await query<{ span_days: number | null; n: number }>(
+  const col = `CAST(${ident(dateColumn)} AS TIMESTAMP)`;
+  const rows = await query<Record<string, unknown>>(
     conn,
-    `SELECT date_diff('day', min(${ident(dateColumn)}), max(${ident(dateColumn)})) AS span_days,
-            count(*) AS n
+    `SELECT count(*) AS n,
+            count(DISTINCT date_trunc('day', ${col})) AS day,
+            count(DISTINCT date_trunc('week', ${col})) AS week,
+            count(DISTINCT date_trunc('month', ${col})) AS month,
+            count(DISTINCT date_trunc('quarter', ${col})) AS quarter
        FROM ${ident(table)} WHERE ${ident(dateColumn)} IS NOT NULL`,
   );
-  const span = num(rows[0]?.span_days) ?? 0;
-  if (span <= 0) return 'day';
-  if (span <= 90) return 'day';
-  if (span <= 400) return 'week';
-  if (span <= 1500) return 'month';
-  return 'quarter';
+  const stats = rows[0];
+  const n = num(stats?.n) ?? 0;
+  if (!n) return 'day';
+
+  const periodsFor = (g: Grain) => Math.max(num(stats?.[g]) ?? 0, 0);
+
+  // Ideal: enough periods for a trend, and enough rows per period for counts.
+  for (const g of GRAIN_ORDER) {
+    const p = periodsFor(g);
+    if (p >= MIN_PERIODS && n / p >= MIN_ROWS_PER_PERIOD) return g;
+  }
+  // Otherwise prefer density over resolution: the coarsest grain that still
+  // gives us at least two comparable periods.
+  for (const g of [...GRAIN_ORDER].reverse()) {
+    if (periodsFor(g) >= 2) {
+      const finer = GRAIN_ORDER.filter((f) => periodsFor(f) >= MIN_PERIODS);
+      return finer.length ? finer[finer.length - 1] : g;
+    }
+  }
+  return 'day';
+}
+
+/**
+ * Human-readable formula shown on a KPI card.
+ *
+ * Derived from the *executed* SQL rather than a hand-written string, so the
+ * card can never claim `COUNT(DISTINCT order)` while the engine actually ran
+ * `COUNT(DISTINCT "order_id")`. What you read is what was computed.
+ */
+export function displayFormula(sql: string): string {
+  return sql.replace(/"/g, '').replace(/\s+/g, ' ').trim();
 }
 
 function bucketExpr(grain: Grain, dateColumn: string): string {
@@ -155,7 +196,7 @@ export async function buildScorecard(
       is_favourable: isFavourable,
       higher_is_better: def.higherIsBetter,
       additive: def.additive,
-      formula: def.formula,
+      formula: displayFormula(expressions[def.id] ?? def.formula),
       series,
       trend: values.length >= 4 ? mannKendall(values) : null,
       sparkline: values.slice(-24).map((v) => Number(v.toFixed(4))),

@@ -18,6 +18,7 @@ import { DeltaPill, Kbd } from './ui/primitives';
 export function Sidebar({
   datasets,
   activeKey,
+  uploadedLabel,
   onSelect,
   analysis,
   selectedKpi,
@@ -27,6 +28,8 @@ export function Sidebar({
 }: {
   datasets: DatasetSummary[];
   activeKey: string;
+  /** Label of the in-memory dataset, when the user has uploaded one. */
+  uploadedLabel?: string | null;
   onSelect: (key: string) => void;
   analysis: Analysis | null;
   selectedKpi: string | null;
@@ -118,12 +121,30 @@ export function Sidebar({
         </div>
 
         <div className="px-3 pb-3">
+          {uploadedLabel ? (
+            <div className="mb-3">
+              <div className="mb-1.5 px-1 text-2xs font-semibold uppercase tracking-[0.08em] text-subtle">
+                Your data (in memory)
+              </div>
+              <div className="rounded-xl border border-accent/40 bg-accent/[0.06] px-3 py-2.5">
+                <div className="truncate text-[13px] font-semibold">{uploadedLabel}</div>
+                <div className="mt-1 text-2xs text-muted">
+                  Analysed locally &middot; cleared when you close this tab
+                </div>
+              </div>
+            </div>
+          ) : null}
           <div className="mb-1.5 px-1 text-2xs font-semibold uppercase tracking-[0.08em] text-subtle">
-            Workspaces
+            {uploadedLabel ? 'Demo workspaces' : 'Workspaces'}
           </div>
-          <div className="space-y-1">
+          {uploadedLabel ? (
+            <p className="mb-1.5 px-1 text-2xs text-subtle">
+              Sample portfolios. Selecting one discards your uploaded dataset.
+            </p>
+          ) : null}
+          <div className={cn('space-y-1', uploadedLabel && 'opacity-60')}>
             {datasets.map((d) => {
-              const active = d.key === activeKey;
+              const active = !uploadedLabel && d.key === activeKey;
               return (
                 <button
                   key={d.key}

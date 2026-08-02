@@ -168,6 +168,7 @@ export default function Page() {
         <Sidebar
           datasets={datasets}
           activeKey={activeKey}
+          uploadedLabel={uploaded?.label ?? null}
           onSelect={(k) => {
             setUploaded(null);
             setActiveKey(k);
@@ -219,9 +220,11 @@ export default function Page() {
             {engineVersion ? ` v${engineVersion}` : ''}.
           </span>
           <span>
-            {IS_DEMO
-              ? 'Demo mode: rendering pre-computed engine output, no server required.'
-              : 'Live mode: connected to the InsightOS API.'}
+            {uploaded
+              ? 'Local mode: your file was parsed, queried and analysed in this browser tab.'
+              : IS_DEMO
+                ? 'Demo mode: rendering pre-computed engine output, no server required.'
+                : 'Live mode: connected to the InsightOS API.'}
           </span>
           <span className="lg:ml-auto">
             MIT licensed &middot; every number on this page was computed, not written.

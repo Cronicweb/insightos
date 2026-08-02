@@ -27,6 +27,12 @@ interface RolePattern {
   kinds: Kind[];
   /** Roles that must be at most binary (flags). */
   binary?: boolean;
+  /**
+   * Names that match `re` but are disqualified anyway. `customer_segment` is
+   * an attribute *of* a customer, not a customer key - counting its distinct
+   * values and calling the result "Active Customers" is simply wrong.
+   */
+  exclude?: RegExp;
 }
 
 const PATTERNS: RolePattern[] = [
@@ -37,7 +43,12 @@ const PATTERNS: RolePattern[] = [
   { role: 'discount', re: /(discount|rebate|promo_amount|markdown)/i, kinds: ['currency', 'percentage'] },
   { role: 'quantity', re: /(quantity|qty|units|volume|items|seats|doses)/i, kinds: ['count', 'numeric'] },
   { role: 'orders', re: /(order|transaction|invoice|booking|ticket|admission|visit|claim)/i, kinds: ['identifier', 'categorical', 'count'] },
-  { role: 'customer', re: /(customer|client|account|member|patient|employee|user)/i, kinds: ['identifier', 'categorical'] },
+  {
+    role: 'customer',
+    re: /(customer|client|account|member|patient|employee|user)/i,
+    kinds: ['identifier', 'categorical'],
+    exclude: /(segment|tier|band|type|class|grade|group|category|cohort|status|since|age|score|rating|since_date)/i,
+  },
   { role: 'region', re: /(region|country|state|territory|market|geo|zone|site|branch|store|location)/i, kinds: ['categorical'] },
   { role: 'segment', re: /(segment|tier|category|type|class|group|department|division|line|specialty|speciality|ward|business_unit|team|plan|product|channel|cohort)/i, kinds: ['categorical'] },
   { role: 'channel', re: /(channel|medium|source|campaign|platform)/i, kinds: ['categorical'] },
@@ -71,6 +82,7 @@ export function resolveRolesDetailed(columns: ColumnProfile[]): ResolvedRole[] {
       if (claimed.has(col.name)) continue;
       if (!pattern.kinds.includes(col.semantic_type)) continue;
       if (!pattern.re.test(col.name)) continue;
+      if (pattern.exclude?.test(col.name)) continue;
       if (col.is_constant) continue;
       // A flag with more than two distinct values is not a flag.
       if (pattern.binary && col.unique > 2) continue;

@@ -230,7 +230,7 @@ export async function assessQuality(
   if (timeCol) {
     const f = await queryOne(
       conn,
-      `SELECT max(${ident(timeCol)}) AS mx,
+      `SELECT CAST(max(${ident(timeCol)}) AS VARCHAR) AS mx,
               date_diff('day', CAST(max(${ident(timeCol)}) AS TIMESTAMP), CAST(now() AS TIMESTAMP)) AS age
          FROM ${t}`,
     );

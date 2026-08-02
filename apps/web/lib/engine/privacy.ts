@@ -86,15 +86,33 @@ export function maskValue(value: unknown, strategy: SensitiveField['strategy']):
   }
 }
 
+/**
+ * Value-shape rules only make sense on free text and identifiers.
+ *
+ * Running them over a date column is how `2026-01-03` ends up flagged as a
+ * phone number: it is a digit followed by nine characters of digits and
+ * hyphens, which is exactly what a loose phone pattern accepts. Dates,
+ * numbers and booleans are therefore never value-scanned - their semantics
+ * are already known from profiling.
+ */
+const VALUE_SCANNABLE: ColumnProfile['semantic_type'][] = ['identifier', 'categorical', 'text'];
+
+/** ISO-8601-ish date shapes that must never be mistaken for personal data. */
+const DATE_SHAPE = /^\d{4}[-/]\d{1,2}[-/]\d{1,2}([T ]|$)|^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}$/;
+
 export function detectSensitiveFields(columns: ColumnProfile[]): PrivacyReport {
   const fields: SensitiveField[] = [];
 
   for (const col of columns) {
     const byName = NAME_RULES.find((r) => r.re.test(col.name));
     const samples = col.sample_values.map((v) => String(v ?? '')).filter(Boolean);
-    const byValue = VALUE_RULES.find(
-      (r) => samples.length > 0 && samples.filter((s) => r.re.test(s)).length / samples.length >= 0.6,
-    );
+    const scannable =
+      VALUE_SCANNABLE.includes(col.semantic_type) && !samples.some((s) => DATE_SHAPE.test(s));
+    const byValue = !scannable
+      ? undefined
+      : VALUE_RULES.find(
+          (r) => samples.length > 0 && samples.filter((s) => r.re.test(s)).length / samples.length >= 0.6,
+        );
     if (!byName && !byValue) continue;
 
     const rule = byValue ?? byName!;
