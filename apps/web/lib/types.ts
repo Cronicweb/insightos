@@ -69,7 +69,7 @@ export interface Trend {
   direction: string;
   slope_per_period: number;
   slope_pct_per_period: number;
-  p_value: number;
+  p_value: number | null;
   tau: number;
   significant: boolean;
   n: number;
@@ -117,8 +117,8 @@ export interface Scorecard {
 }
 
 export interface RootCauseNode {
-  dimension: string;
-  segment: string;
+  dimension: string | null;
+  segment: string | null;
   path: { dimension: string; segment: string }[];
   current: number;
   baseline: number;
@@ -146,7 +146,7 @@ export interface RootCauseNode {
 }
 
 export interface DimensionScore {
-  dimension: string;
+  dimension: string | null;
   explanatory_power: number;
   concentration: number;
   dispersion: number;
@@ -157,7 +157,7 @@ export interface DimensionScore {
 }
 
 export interface RootCauseTree {
-  metric: string;
+  metric: string | null;
   metric_label: string;
   unit: Unit;
   current_period: string;
@@ -181,7 +181,7 @@ export interface RootCauseTree {
 }
 
 export interface Anomaly {
-  metric: string;
+  metric: string | null;
   metric_label: string;
   period: string;
   index: number;
@@ -189,7 +189,7 @@ export interface Anomaly {
   expected: number;
   deviation: number;
   deviation_pct: number | null;
-  z_score: number;
+  z_score: number | null;
   method: string;
   kind: string;
   severity: Severity;
@@ -198,12 +198,12 @@ export interface Anomaly {
 }
 
 export interface SegmentAnomaly {
-  metric: string;
-  dimension: string;
-  segment: string;
+  metric: string | null;
+  dimension: string | null;
+  segment: string | null;
   value: number;
   peer_median: number;
-  robust_z: number;
+  robust_z: number | null;
   direction: string;
   share_of_total_pct: number;
   severity: Severity;
@@ -260,7 +260,7 @@ export interface QualityDimension {
 
 export interface QualityIssue {
   id: string;
-  dimension: string;
+  dimension: string | null;
   column: string | null;
   severity: Severity;
   title: string;
@@ -297,8 +297,8 @@ export interface QualityReport {
     column: string;
     count: number;
     pct: number;
-    lower_fence: number;
-    upper_fence: number;
+    lower_fence: number | null;
+    upper_fence: number | null;
     min_outlier: number;
     max_outlier: number;
     share_of_column_total_pct: number;
@@ -366,7 +366,7 @@ export interface ExecutiveReport {
   dataset: string;
   domain: string;
   period: string;
-  comparison: string;
+  comparison: string | null;
   headline: string;
   summary: string;
   sections: ReportSection[];
@@ -394,7 +394,7 @@ export interface ForecastPoint {
 }
 
 export interface Forecast {
-  metric: string;
+  metric: string | null;
   metric_label: string;
   unit: Unit;
   model: string;

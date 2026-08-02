@@ -14,7 +14,7 @@ import { QualityPanel } from '@/components/panels/quality-panel';
 import { AnomaliesPanel } from '@/components/panels/anomalies-panel';
 import { ForecastPanel } from '@/components/panels/forecast-panel';
 import { Badge, SectionLabel, Skeleton } from '@/components/ui/primitives';
-import { formatInt, formatPct, titleCase } from '@/lib/format';
+import { fixed, formatInt, formatPct, titleCase } from '@/lib/format';
 import { AlertCircle } from 'lucide-react';
 
 export default function Page() {
@@ -247,7 +247,7 @@ function DatasetHeader({
           <Badge tone="neutral">{analysis.columns} columns</Badge>
           <button onClick={() => onTab('quality')}>
             <Badge tone={analysis.quality.score >= 90 ? 'positive' : 'warning'}>
-              Quality {analysis.quality.score.toFixed(1)} ({analysis.quality.grade})
+              Quality {fixed(analysis.quality.score, 1)} ({analysis.quality.grade})
             </Badge>
           </button>
         </div>
@@ -255,7 +255,7 @@ function DatasetHeader({
 
       <div className="mt-4 flex flex-wrap gap-x-6 gap-y-1 border-t border-line pt-3 text-2xs text-subtle">
         <span>{analysis.domain.rationale}</span>
-        <span className="ml-auto">Full pipeline computed in {(totalMs / 1000).toFixed(2)}s</span>
+        <span className="ml-auto">Full pipeline computed in {fixed(totalMs / 1000, 2)}s</span>
       </div>
 
       {analysis.warnings.length ? (

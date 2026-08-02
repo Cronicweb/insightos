@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { Search, ChevronRight, Database, Gauge, AlertTriangle, Lightbulb } from 'lucide-react';
 import type { Analysis, DatasetSummary } from '@/lib/types';
-import { formatInt, formatValue, titleCase } from '@/lib/format';
+import { fixed, formatInt, formatValue, titleCase } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { DeltaPill, Kbd } from './ui/primitives';
 
@@ -239,7 +239,7 @@ function SidebarFooter({ analysis }: { analysis: Analysis }) {
         />
       </div>
       <p className="mt-3 border-t border-line pt-3 text-2xs text-subtle">
-        Full pipeline computed in {(ms / 1000).toFixed(1)}s over {formatInt(analysis.rows)} rows
+        Full pipeline computed in {fixed(ms / 1000, 1)}s over {formatInt(analysis.rows)} rows
         &middot; {analysis.columns} columns.
       </p>
     </div>

@@ -5,6 +5,7 @@ import { TrendingUp } from 'lucide-react';
 import type { Analysis } from '@/lib/types';
 import { ChartRenderer } from '../charts/chart-renderer';
 import { SectionLabel, Badge } from '../ui/primitives';
+import { fixed } from '@/lib/format';
 
 export function ForecastPanel({ analysis }: { analysis: Analysis }) {
   const charts = analysis.charts.filter((c) => c.kind === 'forecast');
@@ -44,7 +45,7 @@ export function ForecastPanel({ analysis }: { analysis: Analysis }) {
                 <Badge tone="accent">{f.model}</Badge>
                 <Badge tone="neutral">horizon {f.horizon}</Badge>
                 {typeof f.mape === 'number' ? (
-                  <Badge tone="neutral">backtest MAPE {f.mape.toFixed(1)}%</Badge>
+                  <Badge tone="neutral">backtest MAPE {fixed(f.mape, 1)}%</Badge>
                 ) : null}
               </div>
               <p className="mt-1.5 text-[13px] leading-relaxed text-muted">{f.narrative}</p>

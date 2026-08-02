@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { AlertTriangle, Radar } from 'lucide-react';
 import type { AnomalyReport } from '@/lib/types';
-import { formatInt, formatPct, formatSignedPct, titleCase } from '@/lib/format';
+import { fixed, formatInt, formatPct, formatSignedPct, titleCase } from '@/lib/format';
 import { Badge, SectionLabel } from '../ui/primitives';
 import { SEVERITY_STYLE, cn } from '@/lib/utils';
 
@@ -76,7 +76,7 @@ export function AnomaliesPanel({ report }: { report: AnomalyReport }) {
                       {a.deviation_pct !== null ? (
                         <span>{formatSignedPct(a.deviation_pct)}</span>
                       ) : null}
-                      <span>z = {a.z_score.toFixed(2)}</span>
+                      <span>z = {fixed(a.z_score, 2)}</span>
                       <span>{a.method}</span>
                     </div>
                   </div>
@@ -127,7 +127,7 @@ export function AnomaliesPanel({ report }: { report: AnomalyReport }) {
                           {s.peer_median.toLocaleString()}
                         </span>
                       </span>
-                      <span>robust z = {s.robust_z.toFixed(2)}</span>
+                      <span>robust z = {fixed(s.robust_z, 2)}</span>
                       <span>{formatPct(s.share_of_total_pct, 1)} of total</span>
                     </div>
                   </div>

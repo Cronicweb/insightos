@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import type { ChartSpec } from '@/lib/types';
-import { formatPct } from '@/lib/format';
+import { fixed, formatPct } from '@/lib/format';
 
 interface Dim {
   name: string;
@@ -35,7 +35,7 @@ export function QualityBars({ spec }: { spec: ChartSpec }) {
                 weight {formatPct(d.weight * 100, 0)}
               </span>
             </span>
-            <span className="text-[13px] font-semibold tabular">{d.score.toFixed(1)}</span>
+            <span className="text-[13px] font-semibold tabular">{fixed(d.score, 1)}</span>
           </div>
           <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-line/60">
             <div

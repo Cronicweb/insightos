@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { FileText, Download, Sparkles } from 'lucide-react';
 import type { ExecutiveReport } from '@/lib/types';
-import { formatSignedPct } from '@/lib/format';
+import { fixed, formatSignedPct } from '@/lib/format';
 import { SectionLabel, Badge } from '../ui/primitives';
 import { cn } from '@/lib/utils';
 
@@ -35,7 +35,7 @@ export function ReportPanel({ report }: { report: ExecutiveReport }) {
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <Badge tone="neutral">{report.period}</Badge>
               <Badge tone="neutral">vs {report.comparison}</Badge>
-              <Badge tone="accent">Confidence {(report.confidence * 100).toFixed(0)}%</Badge>
+              <Badge tone="accent">Confidence {fixed(report.confidence * 100, 0)}%</Badge>
               <Badge tone={report.polished ? 'accent' : 'neutral'}>
                 <Sparkles className="mr-1 inline h-3 w-3" />
                 {report.polished ? 'LLM-polished wording' : 'Deterministic wording'}
@@ -137,7 +137,7 @@ function toMarkdown(r: ExecutiveReport): string {
   lines.push(`# ${r.dataset} \u2014 Executive Report`, '');
   lines.push(`**${r.headline}**`, '');
   lines.push(
-    `_${r.period} vs ${r.comparison} \u00b7 confidence ${(r.confidence * 100).toFixed(0)}%_`,
+    `_${r.period} vs ${r.comparison} \u00b7 confidence ${fixed(r.confidence * 100, 0)}%_`,
     '',
   );
   lines.push('## Business Summary', '', r.summary, '');

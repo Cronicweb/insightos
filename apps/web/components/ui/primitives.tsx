@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { cn } from '@/lib/utils';
+import { fixed } from '@/lib/format';
 
 /* ------------------------------------------------------------------ Card */
 
@@ -89,7 +90,7 @@ export function DeltaPill({
           opacity="0.85"
         />
       </svg>
-      {Math.abs(value).toFixed(1)}%
+      {fixed(Math.abs(value), 1)}%
     </span>
   );
 }

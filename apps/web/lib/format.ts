@@ -25,6 +25,21 @@ export function compactNumber(value: number, digits = 2): string {
   return abs >= 100 ? value.toFixed(0) : value.toFixed(Math.min(digits, 2));
 }
 
+/** Null-safe wrapper around Number.prototype.toFixed. The engine legitimately
+ *  emits null for statistics it cannot compute (a z-score with zero dispersion,
+ *  a MAPE with no backtest window). Presentation must degrade to an em-dash,
+ *  never throw. */
+export function fixed(value: number | null | undefined, digits = 1): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '\u2014';
+  return value.toFixed(digits);
+}
+
+/** Null-safe wrapper around Number.prototype.toExponential. */
+export function exponential(value: number | null | undefined, digits = 1): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '\u2014';
+  return value.toExponential(digits);
+}
+
 export function formatValue(value: number | null | undefined, unit?: Unit): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return '\u2014';
   switch (unit) {
@@ -77,7 +92,8 @@ export function formatPValue(p: number | null | undefined): string {
   return `p = ${p.toFixed(4)}`;
 }
 
-export function titleCase(text: string): string {
+export function titleCase(text: string | null | undefined): string {
+  if (!text) return '\u2014';
   return text
     .replace(/[_-]+/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase())

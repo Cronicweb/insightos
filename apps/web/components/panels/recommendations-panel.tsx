@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { ChevronDown, Lightbulb } from 'lucide-react';
 import type { Recommendation, RecommendationSet } from '@/lib/types';
-import { formatPValue, formatValue, titleCase } from '@/lib/format';
+import { fixed, formatPValue, formatValue, titleCase } from '@/lib/format';
 import { Badge, SectionLabel } from '../ui/primitives';
 import { SEVERITY_STYLE, cn } from '@/lib/utils';
 
@@ -133,7 +133,7 @@ function RecommendationCard({ rec }: { rec: Recommendation }) {
             <p className="text-[13px] leading-relaxed text-muted">{rec.rationale}</p>
             <div className="flex flex-wrap gap-2">
               <Badge tone="neutral">rule: {rec.triggered_by}</Badge>
-              <Badge tone="neutral">confidence {(rec.confidence * 100).toFixed(0)}%</Badge>
+              <Badge tone="neutral">confidence {fixed(rec.confidence * 100, 0)}%</Badge>
               {rec.metric ? <Badge tone="neutral">metric: {rec.metric}</Badge> : null}
               {rec.dimension ? (
                 <Badge tone="neutral">

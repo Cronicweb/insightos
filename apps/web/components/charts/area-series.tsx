@@ -15,7 +15,7 @@ import {
   YAxis,
 } from 'recharts';
 import type { ChartSpec, Unit } from '@/lib/types';
-import { formatExact, formatValue } from '@/lib/format';
+import { fixed, formatExact, formatValue } from '@/lib/format';
 
 export type SeriesMode = 'area' | 'bar' | 'line' | 'table';
 
@@ -54,7 +54,7 @@ export function AreaSeries({
                     {d.display ?? formatExact(d.value, unit)}
                   </td>
                   <td className="px-3 py-1.5 text-right tabular text-muted">
-                    {change === null ? '\u2014' : `${change > 0 ? '+' : ''}${change.toFixed(1)}%`}
+                    {change === null ? '\u2014' : `${change > 0 ? '+' : ''}${fixed(change, 1)}%`}
                   </td>
                 </tr>
               );

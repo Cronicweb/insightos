@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import type { Analysis, ChartSpec, Kpi } from '@/lib/types';
-import { formatExact, formatSignedPct, formatValue } from '@/lib/format';
+import { exponential, fixed, formatExact, formatSignedPct, formatValue } from '@/lib/format';
 import { AreaSeries, type SeriesMode } from '../charts/area-series';
 import { Segmented, Badge } from '../ui/primitives';
 import { AreaChart, BarChart3, LineChart, Table2 } from 'lucide-react';
@@ -95,12 +95,12 @@ export function HeroMetric({
         <div className="flex flex-wrap gap-x-6 gap-y-1 border-t border-line px-5 py-3 text-2xs text-muted">
           <span>
             Trend: <span className="font-medium text-ink">{kpi.trend.direction}</span>{' '}
-            (Mann&ndash;Kendall &tau; = {kpi.trend.tau.toFixed(3)}, p ={' '}
-            {kpi.trend.p_value.toExponential(1)})
+            (Mann&ndash;Kendall &tau; = {fixed(kpi.trend.tau, 3)}, p ={' '}
+            {exponential(kpi.trend.p_value, 1)})
           </span>
           <span>
             Theil&ndash;Sen slope: {formatExact(kpi.trend.slope_per_period, kpi.unit)} per period (
-            {kpi.trend.slope_pct_per_period.toFixed(2)}%)
+            {fixed(kpi.trend.slope_pct_per_period, 2)}%)
           </span>
           <span>
             {kpi.trend.significant

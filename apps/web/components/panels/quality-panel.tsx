@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import type { Analysis, ChartSpec } from '@/lib/types';
-import { formatInt, formatPct, titleCase } from '@/lib/format';
+import { fixed, formatInt, formatPct, titleCase } from '@/lib/format';
 import { Badge, SectionLabel, Segmented } from '../ui/primitives';
 import { ChartRenderer } from '../charts/chart-renderer';
 import { SEVERITY_STYLE, cn } from '@/lib/utils';
@@ -38,7 +38,7 @@ export function QualityPanel({ analysis, chart }: { analysis: Analysis; chart?: 
             >
               <div className="grid h-[88px] w-[88px] place-items-center rounded-full bg-surface">
                 <div className="text-center">
-                  <div className="text-2xl font-semibold tabular">{q.score.toFixed(1)}</div>
+                  <div className="text-2xl font-semibold tabular">{fixed(q.score, 1)}</div>
                   <div className="text-2xs text-subtle">grade {q.grade}</div>
                 </div>
               </div>
@@ -235,7 +235,7 @@ function Outliers({ analysis }: { analysis: Analysis }) {
               {formatPct(o.share_of_column_total_pct, 1)}
             </td>
             <td className="text-right tabular text-subtle">
-              {o.lower_fence.toFixed(1)} &hellip; {o.upper_fence.toFixed(1)}
+              {fixed(o.lower_fence, 1)} &hellip; {fixed(o.upper_fence, 1)}
             </td>
             <td className="text-subtle">{o.method}</td>
           </tr>
@@ -266,7 +266,7 @@ function Cardinality({ analysis }: { analysis: Analysis }) {
             <td className="text-right tabular">{formatInt(c.unique)}</td>
             <td className="text-right tabular text-muted">{formatPct(c.unique_pct, 2)}</td>
             <td className="text-right tabular text-subtle">
-              {c.hhi === null ? DASH : c.hhi.toFixed(4)}
+              {fixed(c.hhi, 4)}
             </td>
           </tr>
         ))}

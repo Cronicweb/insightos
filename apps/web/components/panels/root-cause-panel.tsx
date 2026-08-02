@@ -3,14 +3,7 @@
 import * as React from 'react';
 import { ChevronRight, ShieldCheck, GitBranch, Target } from 'lucide-react';
 import type { RootCauseNode, RootCauseTree, Unit } from '@/lib/types';
-import {
-  formatExact,
-  formatPValue,
-  formatPct,
-  formatSignedPct,
-  formatValue,
-  titleCase,
-} from '@/lib/format';
+import { fixed, formatExact, formatPValue, formatPct, formatSignedPct, formatValue, titleCase } from '@/lib/format';
 import { Badge, SectionLabel } from '../ui/primitives';
 import { ROLE_STYLE, cn } from '@/lib/utils';
 
@@ -48,7 +41,7 @@ export function RootCausePanel({ tree }: { tree: RootCauseTree }) {
                 {titleCase(tree.severity)} severity
               </Badge>
               <Badge tone="neutral">{titleCase(tree.comparison_type.replace(/_/g, ' '))}</Badge>
-              <Badge tone="accent">Confidence {(tree.confidence * 100).toFixed(0)}%</Badge>
+              <Badge tone="accent">Confidence {fixed(tree.confidence * 100, 0)}%</Badge>
             </div>
           </div>
           <dl className="grid shrink-0 grid-cols-3 gap-x-6 gap-y-1 text-right">
@@ -117,7 +110,7 @@ export function RootCausePanel({ tree }: { tree: RootCauseTree }) {
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-[13px] font-medium">{titleCase(d.dimension)}</span>
                     <span className="text-2xs tabular text-muted">
-                      {(d.explanatory_power * 100).toFixed(0)}%
+                      {fixed(d.explanatory_power * 100, 0)}%
                     </span>
                   </div>
                   <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-line/60">
