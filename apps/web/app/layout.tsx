@@ -18,9 +18,12 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 /**
- * Next 14 does not prefix the auto-injected manifest link with `basePath`, so
- * the Pages deployment would request `/manifest.webmanifest` and 404. Declaring
- * it here overrides that link with the correct path.
+ * The manifest is a static `public/` asset rather than an `app/manifest.ts`
+ * route, because Next 14 emits the file-convention link without a `basePath`
+ * prefix and ignores `metadata.manifest` when that convention is present -- the
+ * Pages deployment then requests `/manifest.webmanifest` and 404s. Serving it
+ * from `public/` lets us declare the prefixed link ourselves, and the manifest's
+ * own icon paths are relative so they resolve against wherever it is served.
  */
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
 
