@@ -1,0 +1,88 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-sans: 'Inter', 'Inter var', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  --canvas: 244 245 247;
+  --surface: 255 255 255;
+  --elevated: 250 250 251;
+  --line: 228 230 235;
+  --ink: 15 23 42;
+  --muted: 100 108 124;
+  --subtle: 148 156 170;
+  --accent: 37 99 235;
+  --positive: 22 128 92;
+  --negative: 190 42 62;
+  --warning: 176 106 12;
+}
+
+.dark {
+  --canvas: 13 15 20;
+  --surface: 22 25 32;
+  --elevated: 28 32 40;
+  --line: 44 49 60;
+  --ink: 235 238 243;
+  --muted: 154 162 176;
+  --subtle: 116 124 138;
+  --accent: 96 150 255;
+  --positive: 61 190 138;
+  --negative: 246 116 132;
+  --warning: 226 163 62;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background-color: rgb(var(--canvas));
+  color: rgb(var(--ink));
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  border-color: rgb(var(--line));
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--line));
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--subtle));
+  background-clip: content-box;
+}
+
+@layer utilities {
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  .card {
+    @apply rounded-2xl border border-line bg-surface shadow-card;
+  }
+}
+
+/* Keep Recharts chrome quiet and enterprise-like. */
+.recharts-cartesian-axis-tick text {
+  fill: rgb(var(--subtle));
+  font-size: 11px;
+}
+.recharts-cartesian-grid line {
+  stroke: rgb(var(--line));
+}
+.recharts-surface:focus {
+  outline: none;
+}
