@@ -38,10 +38,26 @@ export function ChartRenderer({
         value={mode}
         onChange={setMode}
         options={[
-          { value: 'bar', label: <BarChart3 className="h-3.5 w-3.5" />, title: 'Bars' },
-          { value: 'area', label: <AreaChart className="h-3.5 w-3.5" />, title: 'Area' },
-          { value: 'line', label: <LineChart className="h-3.5 w-3.5" />, title: 'Line' },
-          { value: 'table', label: <Table2 className="h-3.5 w-3.5" />, title: 'Table' },
+          {
+            value: 'bar',
+            label: <BarChart3 className="h-3.5 w-3.5" />,
+            title: 'Bars \u2014 one bar per period',
+          },
+          {
+            value: 'area',
+            label: <AreaChart className="h-3.5 w-3.5" />,
+            title: 'Area \u2014 smoothed shape, for reading the overall trend',
+          },
+          {
+            value: 'line',
+            label: <LineChart className="h-3.5 w-3.5" />,
+            title: 'Line \u2014 exact values joined by straight segments',
+          },
+          {
+            value: 'table',
+            label: <Table2 className="h-3.5 w-3.5" />,
+            title: 'Table \u2014 the underlying numbers',
+          },
         ]}
       />
     ) : undefined;

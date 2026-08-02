@@ -30,6 +30,7 @@ export function AreaSeries({
 }) {
   const unit = (spec.unit ?? 'number') as Unit;
   const data = spec.data as { label: string; value: number; display?: string }[];
+  const gradientId = `insightos-area-${React.useId().replace(/:/g, '')}`;
 
   if (mode === 'table') {
     return (
@@ -101,18 +102,19 @@ export function AreaSeries({
           <YAxis {...axis} width={56} tickFormatter={(v: number) => formatValue(v, unit)} />
           {tooltip}
           <Line
-            type="monotone"
+            type="linear"
             dataKey="value"
             stroke="rgb(var(--accent))"
             strokeWidth={2}
-            dot={false}
+            dot={data.length <= 60 ? { r: 2, strokeWidth: 0, fill: 'rgb(var(--accent))' } : false}
             activeDot={{ r: 4 }}
+            isAnimationActive={false}
           />
         </LineChart>
       ) : (
         <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
           <defs>
-            <linearGradient id="insightos-area" x1="0" y1="0" x2="0" y2="1">
+            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="rgb(var(--accent))" stopOpacity={0.22} />
               <stop offset="100%" stopColor="rgb(var(--accent))" stopOpacity={0.02} />
             </linearGradient>
@@ -126,7 +128,7 @@ export function AreaSeries({
             dataKey="value"
             stroke="rgb(var(--accent))"
             strokeWidth={2}
-            fill="url(#insightos-area)"
+            fill={`url(#${gradientId})`}
           />
         </AreaChart>
       )}

@@ -106,7 +106,7 @@ export function ForecastChart({ spec, height = 280 }: { spec: ChartSpec; height?
           />
         ) : null}
         <Line
-          type="monotone"
+          type="linear"
           dataKey="actual"
           stroke="rgb(var(--ink))"
           strokeWidth={2}
@@ -115,7 +115,7 @@ export function ForecastChart({ spec, height = 280 }: { spec: ChartSpec; height?
           isAnimationActive={false}
         />
         <Line
-          type="monotone"
+          type="linear"
           dataKey="forecast"
           stroke="rgb(var(--accent))"
           strokeWidth={2}
