@@ -253,8 +253,8 @@ fixture would have made every figure on the site unverifiable.
 
 ## Browser analytics: bring your own data
 
-The deployed site is not limited to the bundled demos. **Upload a CSV, Parquet
-or JSON file and the entire pipeline runs inside the browser tab.**
+The deployed site is not limited to the bundled demos. **Upload a CSV, Excel,
+Parquet or JSON file and the entire pipeline runs inside the browser tab.**
 
 > Your data never leaves your device. All analysis runs locally.
 
@@ -266,7 +266,9 @@ the tab destroys everything.
 ### Upload flow
 
 ```
-File picked (CSV / Parquet / JSON)
+File picked (CSV / XLSX / Parquet / JSON)
+  |
+  v  .xlsx is streamed out of its zip and flattened to CSV first
   |
   v  PapaParse (CSV) or Arrow IPC (Parquet/JSON)
 Arrow table in tab memory
@@ -509,7 +511,7 @@ and dismissed are as informative as the one it kept.
   versions, and automated GitHub Pages deployment that recomputes all demo
   analytics from source at build time.
 - Shipped a **zero-backend browser analytics engine** using DuckDB-WASM and
-  Apache Arrow: users upload CSV/Parquet/JSON and the full profiling, KPI,
+  Apache Arrow: users upload CSV/Excel/Parquet/JSON and the full profiling, KPI,
   root-cause and forecasting pipeline executes as SQL inside the tab, with no
   data ever leaving the device.
 - Built a **data governance layer** - source, freshness, ownership, quality
