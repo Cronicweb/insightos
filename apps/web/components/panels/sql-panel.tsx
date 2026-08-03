@@ -245,6 +245,7 @@ ORDER BY segment, period;`,
  * query text. The same question is asked in DuckDB here, in BigQuery at one
  * employer and in Hive at the next, and porting it - date truncation, date
  * differencing, quantiles, QUALIFY - is the actual work.
+ */
 export function SqlPanel({ analysis }: { analysis: Analysis }) {
   const uploaded = analysis.key?.startsWith('upload:') ? analysis.key.slice('upload:'.length) : null;
   // Demo datasets have no table behind them, but they do carry a profiled
