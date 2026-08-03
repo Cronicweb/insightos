@@ -155,6 +155,14 @@ function backtickIdentifiers(sql: string): string {
 
 const HIVE_TRUNC: Record<string, string> = { year: 'YY', quarter: 'Q', month: 'MM' };
 
+/**
+ * Constructs whose caveats are worth printing only when the query actually
+ * uses them. A note that fires on every query - including `SELECT * LIMIT 20` -
+ * teaches a reader to ignore the notes, which defeats the point of having them.
+ */
+const QUANTILE_RE = /\b(?:QUANTILE_CONT|APPROX_QUANTILE|PERCENTILE_CONT|PERCENTILE_DISC)\s*\(/i;
+const READS_A_TABLE_RE = /\bFROM\s+[`"\w]/i;
+
 function toBigQuery(sql: string): Translation {
   const notes: string[] = [];
 
@@ -199,9 +207,13 @@ function toBigQuery(sql: string): Translation {
     notes.push('Use TABLESAMPLE SYSTEM (n PERCENT) instead of USING SAMPLE.');
   }
 
-  notes.push(
-    'Qualify the table as `project.dataset.table`; partition filters are billed, so add one.',
-  );
+  // Only relevant once the query actually reads a table: a scalar SELECT is
+  // free, and billing advice on it would be noise.
+  if (READS_A_TABLE_RE.test(sql)) {
+    notes.push(
+      'Qualify the table as `project.dataset.table`; partition filters are billed, so add one.',
+    );
+  }
   return { sql: out, notes };
 }
 
@@ -262,7 +274,11 @@ function toHive(sql: string): Translation {
     notes.push('GROUPING(col) is spelled GROUPING__ID here and returns a bitmask, not a flag.');
   }
 
-  notes.push('percentile_approx is approximate by construction; DuckDB QUANTILE_CONT is exact.');
+  // Fires only when a quantile was actually rewritten, so the accuracy warning
+  // stays attached to the one construct where accuracy genuinely changed.
+  if (QUANTILE_RE.test(sql)) {
+    notes.push('percentile_approx is approximate by construction; DuckDB QUANTILE_CONT is exact.');
+  }
   return { sql: out, notes };
 }
 
