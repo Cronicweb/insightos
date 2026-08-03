@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
+import { Cell, Pie, PieChart, ResponsiveContainer } from 'recharts';
 import type { ChartSpec, Unit } from '@/lib/types';
 import { formatExact, formatPct } from '@/lib/format';
 import { colourAt } from '@/lib/utils';
@@ -13,7 +13,13 @@ interface Slice {
   share: number;
 }
 
-/** Donut with a centre read-out, matching the reference dashboard's composition card. */
+/**
+ * Donut with a centre read-out, matching the reference dashboard's composition card.
+ *
+ * There is deliberately no Recharts `<Tooltip>`: with a 62% inner radius the tooltip
+ * anchors inside the hole and covers the centre read-out, which already shows the same
+ * name, value and share for the hovered slice.
+ */
 export function Donut({ spec, height = 300 }: { spec: ChartSpec; height?: number }) {
   const unit = ((spec.encoding?.unit as Unit) ?? spec.unit ?? 'number') as Unit;
   const data = spec.data as unknown as Slice[];
@@ -25,21 +31,6 @@ export function Donut({ spec, height = 300 }: { spec: ChartSpec; height?: number
       <div className="relative" style={{ height }}>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
-            <Tooltip
-              content={({ active: on, payload }) => {
-                if (!on || !payload?.length) return null;
-                const p = payload[0].payload as Slice;
-                return (
-                  <div className="rounded-xl border border-line bg-surface px-3 py-2 shadow-pop">
-                    <div className="text-2xs text-subtle">{p.name}</div>
-                    <div className="text-[13px] font-semibold tabular">
-                      {p.display ?? formatExact(p.value, unit)}
-                    </div>
-                    <div className="text-2xs text-muted">{formatPct(p.share, 1)} of total</div>
-                  </div>
-                );
-              }}
-            />
             <Pie
               data={data}
               dataKey="value"
@@ -51,7 +42,11 @@ export function Donut({ spec, height = 300 }: { spec: ChartSpec; height?: number
               onMouseEnter={(_, i) => setActive(i)}
             >
               {data.map((d, i) => (
-                <Cell key={d.name} fill={colourAt(i)} opacity={i === active ? 1 : 0.45} />
+                <Cell
+                  key={d.name}
+                  fill={colourAt(i)}
+                  opacity={i === active ? 1 : 0.45}
+                />
               ))}
             </Pie>
           </PieChart>
@@ -59,9 +54,9 @@ export function Donut({ spec, height = 300 }: { spec: ChartSpec; height?: number
 
         {focus ? (
           <div className="pointer-events-none absolute inset-0 grid place-items-center">
-            <div className="text-center">
-              <div className="text-2xs text-muted">{focus.name}</div>
-              <div className="mt-0.5 text-xl font-semibold tabular">
+            <div className="max-w-[52%] text-center">
+              <div className="truncate text-2xs text-muted">{focus.name}</div>
+              <div className="mt-0.5 truncate text-xl font-semibold tabular">
                 {focus.display ?? formatExact(focus.value, unit)}
               </div>
               <div className="mt-1.5 inline-block rounded-full bg-ink px-2 py-0.5 text-2xs font-semibold text-canvas tabular">
@@ -81,10 +76,7 @@ export function Donut({ spec, height = 300 }: { spec: ChartSpec; height?: number
               className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1 text-left hover:bg-elevated"
             >
               <span className="flex min-w-0 items-center gap-1.5">
-                <span
-                  className="h-2 w-2 shrink-0 rounded-full"
-                  style={{ backgroundColor: colourAt(i) }}
-                />
+                <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: colourAt(i) }} />
                 <span className="truncate text-xs">{d.name}</span>
               </span>
               <span className="shrink-0 text-2xs tabular text-muted">{formatPct(d.share, 1)}</span>
