@@ -86,7 +86,10 @@ export interface Coercion {
   note: string;
 }
 
+// `query<T>` constrains T to an indexable row shape, so the index signature is
+// what makes this a legal type argument rather than cosmetic.
 interface ColumnRow {
+  [key: string]: unknown;
   column_name: unknown;
   data_type: unknown;
 }
