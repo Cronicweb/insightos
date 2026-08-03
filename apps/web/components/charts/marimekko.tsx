@@ -19,6 +19,11 @@ interface Group {
   children: Child[];
 }
 
+/** Height reserved below the mosaic for the group label row. */
+const FOOTER_HEIGHT = 40;
+/** A tile needs at least this many pixels of height before a label fits inside it. */
+const MIN_LABEL_TILE_PX = 34;
+
 /**
  * Marimekko (mosaic) composition chart.
  *
@@ -27,6 +32,11 @@ interface Group {
  * of a two-dimensional composition at once, which is exactly what a root-cause
  * conversation needs - and it is hand-built rather than delegated to a chart
  * library because no general-purpose library models the dual encoding.
+ *
+ * Group labels live in a dedicated footer row rather than inside the bottom
+ * tile: tiles clip their overflow, so a short bottom segment used to slice the
+ * share pill in half. Segment labels are only drawn when the tile is measurably
+ * tall and wide enough to hold them.
  */
 export function Marimekko({ spec, height = 340 }: { spec: ChartSpec; height?: number }) {
   const unit = ((spec.encoding?.unit as Unit) ?? spec.unit ?? 'number') as Unit;
@@ -40,10 +50,11 @@ export function Marimekko({ spec, height = 340 }: { spec: ChartSpec; height?: nu
 
   const total = groups.reduce((a, g) => a + Math.abs(g.value), 0) || 1;
   const wrapRef = React.useRef<HTMLDivElement>(null);
+  const plotHeight = Math.max(height - FOOTER_HEIGHT, 120);
 
   return (
     <div className="relative" ref={wrapRef}>
-      <div className="flex gap-1.5" style={{ height }}>
+      <div className="flex gap-1.5">
         {groups.map((g, gi) => {
           const widthPct = (Math.abs(g.value) / total) * 100;
           const colour = colourAt(gi);
@@ -52,62 +63,74 @@ export function Marimekko({ spec, height = 340 }: { spec: ChartSpec; height?: nu
           return (
             <div
               key={g.name}
-              className="flex min-w-[10px] flex-col gap-1.5"
+              className="flex min-w-[10px] flex-col"
               style={{ width: `${widthPct}%` }}
             >
-              {g.children.map((c, ci) => {
-                const h = Math.max(c.shareOfGroup, 1.5);
-                const last = ci === g.children.length - 1;
-                return (
-                  <div
-                    key={c.name}
-                    className="relative overflow-hidden rounded-lg transition-[filter] hover:brightness-95 dark:hover:brightness-125"
-                    style={{
-                      height: `${h}%`,
-                      backgroundColor: soft,
-                      opacity: 0.55 + 0.45 * (1 - ci / Math.max(g.children.length, 1)),
-                    }}
-                    onMouseEnter={(e) => {
-                      const box = wrapRef.current?.getBoundingClientRect();
-                      setHover({
-                        group: g,
-                        child: c,
-                        x: e.clientX - (box?.left ?? 0),
-                        y: e.clientY - (box?.top ?? 0),
-                      });
-                    }}
-                    onMouseMove={(e) => {
-                      const box = wrapRef.current?.getBoundingClientRect();
-                      setHover((prev) =>
-                        prev
-                          ? {
-                              ...prev,
-                              x: e.clientX - (box?.left ?? 0),
-                              y: e.clientY - (box?.top ?? 0),
-                            }
-                          : prev,
-                      );
-                    }}
-                    onMouseLeave={() => setHover(null)}
-                  >
-                    {last && wide ? (
-                      <div className="absolute inset-x-2 bottom-2 space-y-1.5">
-                        <span
-                          className="inline-block rounded-full px-2 py-0.5 text-2xs font-semibold text-white"
-                          style={{ backgroundColor: 'rgb(17 24 39 / 0.88)' }}
-                        >
-                          {formatPct(g.share, 1)}
-                        </span>
-                        <div className="truncate text-2xs font-medium text-slate-800">{g.name}</div>
-                      </div>
-                    ) : null}
-                    <span
-                      className="absolute left-0 top-0 h-full w-[3px]"
-                      style={{ backgroundColor: colour, opacity: 0.35 }}
-                    />
-                  </div>
-                );
-              })}
+              <div className="flex flex-col gap-1.5" style={{ height: plotHeight }}>
+                {g.children.map((c, ci) => {
+                  const h = Math.max(c.shareOfGroup, 1.5);
+                  const tilePx = (h / 100) * plotHeight;
+                  const labelled = wide && tilePx >= MIN_LABEL_TILE_PX;
+                  return (
+                    <div
+                      key={c.name}
+                      className="relative overflow-hidden rounded-lg transition-[filter] hover:brightness-95 dark:hover:brightness-125"
+                      style={{
+                        height: `${h}%`,
+                        backgroundColor: soft,
+                        opacity: 0.55 + 0.45 * (1 - ci / Math.max(g.children.length, 1)),
+                      }}
+                      onMouseEnter={(e) => {
+                        const box = wrapRef.current?.getBoundingClientRect();
+                        setHover({
+                          group: g,
+                          child: c,
+                          x: e.clientX - (box?.left ?? 0),
+                          y: e.clientY - (box?.top ?? 0),
+                        });
+                      }}
+                      onMouseMove={(e) => {
+                        const box = wrapRef.current?.getBoundingClientRect();
+                        setHover((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                x: e.clientX - (box?.left ?? 0),
+                                y: e.clientY - (box?.top ?? 0),
+                              }
+                            : prev,
+                        );
+                      }}
+                      onMouseLeave={() => setHover(null)}
+                    >
+                      {labelled ? (
+                        <div className="absolute inset-x-2.5 top-1.5 flex items-baseline justify-between gap-2">
+                          <span className="truncate text-2xs font-medium text-slate-700">
+                            {c.name}
+                          </span>
+                          <span className="shrink-0 text-2xs tabular text-slate-600">
+                            {formatPct(c.shareOfGroup, 0)}
+                          </span>
+                        </div>
+                      ) : null}
+                      <span
+                        className="absolute left-0 top-0 h-full w-[3px]"
+                        style={{ backgroundColor: colour, opacity: 0.35 }}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div
+                className="flex shrink-0 items-center gap-1.5 overflow-hidden pt-2"
+                style={{ height: FOOTER_HEIGHT }}
+              >
+                <span className="shrink-0 rounded-full bg-ink px-1.5 py-0.5 text-2xs font-semibold text-canvas tabular">
+                  {formatPct(g.share, wide ? 1 : 0)}
+                </span>
+                {wide ? <span className="truncate text-2xs font-medium">{g.name}</span> : null}
+              </div>
             </div>
           );
         })}
