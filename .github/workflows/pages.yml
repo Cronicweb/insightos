@@ -4,6 +4,12 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # The demo generators anchor their date range to "last month" at build
+  # time. Deploying weekly keeps the published demos current even when the
+  # repository is quiet, so the quality report's timeliness score stays
+  # honest instead of decaying with the calendar.
+  schedule:
+    - cron: '17 6 * * 1'
 
 permissions:
   contents: read
