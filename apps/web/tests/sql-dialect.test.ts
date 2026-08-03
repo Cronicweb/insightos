@@ -133,8 +133,16 @@ describe('unsupported constructs are reported, not silently emitted', () => {
     expect(out.notes.some((n) => n.includes('GROUPING__ID'))).toBe(true);
   });
 
-  it('always reminds a BigQuery reader about partition billing', () => {
-    expect(translate('SELECT 1', 'bigquery').notes.length).toBeGreaterThan(0);
+  it('reminds a BigQuery reader about partition billing once a table is read', () => {
+    const out = translate('SELECT region FROM orders', 'bigquery');
+    expect(out.notes.some((n) => n.includes('partition'))).toBe(true);
+  });
+
+  // Caveats that fire on every query train the reader to skip them, so each one
+  // has to be earned by the construct it describes.
+  it('stays silent when the query cannot trigger the caveat', () => {
+    expect(translate('SELECT 1', 'bigquery').notes).toEqual([]);
+    expect(translate('SELECT * FROM orders LIMIT 20', 'hive').notes).toEqual([]);
   });
 });
 
