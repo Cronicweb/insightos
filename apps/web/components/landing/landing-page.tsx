@@ -26,7 +26,7 @@ import {
 const REPO_URL = 'https://github.com/Cronicweb/insightos';
 
 const PIPELINE = [
-  { icon: Upload, title: 'Upload', detail: 'CSV, JSON or Parquet parsed in your browser with DuckDB-WASM.' },
+  { icon: Upload, title: 'Upload', detail: 'CSV, Excel, JSON or Parquet parsed in your browser with DuckDB-WASM.' },
   { icon: BarChart3, title: 'Automatic KPI discovery', detail: 'The domain is inferred, then the KPIs that matter for it are derived.' },
   { icon: GitBranch, title: 'Root cause analysis', detail: 'Every driver is tested for significance and ranked by contribution.' },
   { icon: Lightbulb, title: 'Executive recommendations', detail: 'Deterministic rules produce owned, auditable actions.' },
@@ -247,7 +247,7 @@ export function LandingPage({
                 </span>
                 <span className="mt-3 text-[13.5px] font-semibold">Use your own data</span>
                 <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">
-                  CSV, JSON or Parquet up to several hundred thousand rows. Parsed and
+                  CSV, Excel, JSON or Parquet up to several hundred thousand rows. Parsed and
                   queried entirely in this tab; nothing is uploaded and nothing is stored.
                 </p>
               </button>
