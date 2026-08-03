@@ -15,7 +15,7 @@ import {
   type DerivedMeasure,
 } from './coerce';
 
-export type SourceFormat = 'csv' | 'json' | 'parquet';
+export type SourceFormat = 'csv' | 'json' | 'parquet' | 'xlsx';
 
 export interface IngestResult {
   table: string;
@@ -29,6 +29,8 @@ export interface IngestResult {
   coercions: Coercion[];
   /** Measures computed at ingest because the raw grain could not be summed. */
   derived: DerivedMeasure[];
+  /** Set when a spreadsheet was flattened, naming the sheet that was read. */
+  workbook?: { sheet: string; otherSheets: string[] };
 }
 
 export function detectFormat(fileName: string): SourceFormat | null {
@@ -36,6 +38,7 @@ export function detectFormat(fileName: string): SourceFormat | null {
   if (lower.endsWith('.csv') || lower.endsWith('.tsv') || lower.endsWith('.txt')) return 'csv';
   if (lower.endsWith('.json') || lower.endsWith('.ndjson')) return 'json';
   if (lower.endsWith('.parquet') || lower.endsWith('.pq')) return 'parquet';
+  if (lower.endsWith('.xlsx') || lower.endsWith('.xlsm')) return 'xlsx';
   return null;
 }
 
@@ -50,7 +53,9 @@ function readerFor(format: SourceFormat, virtualPath: string): string {
   // VARCHAR for any column it cannot resolve, so correctness is preserved.
   if (format === 'csv') return `read_csv_auto(${lit(virtualPath)}, SAMPLE_SIZE=65536)`;
   if (format === 'json') return `read_json_auto(${lit(virtualPath)})`;
-  return `read_parquet(${lit(virtualPath)})`;
+  if (format === 'parquet') return `read_parquet(${lit(virtualPath)})`;
+  // Workbooks arrive here already transposed to CSV bytes.
+  return `read_csv_auto(${lit(virtualPath)}, SAMPLE_SIZE=65536)`;
 }
 
 export async function ingestFile(
@@ -59,13 +64,33 @@ export async function ingestFile(
 ): Promise<IngestResult> {
   const started = performance.now();
   const format = detectFormat(file.name);
-  if (!format) throw new Error(`Unsupported file type. Upload a .csv, .json or .parquet file.`);
+  if (!format) {
+    if (/\.xls$/i.test(file.name)) {
+      throw new Error(
+        'The legacy .xls format is not supported. Re-save the file as .xlsx or CSV and upload it again.',
+      );
+    }
+    throw new Error('Unsupported file type. Upload a .csv, .xlsx, .json or .parquet file.');
+  }
 
   onProgress?.('Starting the in-browser database');
   const { db, conn } = await getDuckDb(onProgress);
 
   onProgress?.('Reading the file into memory');
-  const buffer = new Uint8Array(await file.arrayBuffer());
+  let buffer = new Uint8Array(await file.arrayBuffer());
+  let workbook: IngestResult['workbook'];
+
+  // A workbook is a zip of XML, not a table, so it is flattened to CSV before
+  // DuckDB sees it - which also means every later stage takes the CSV path that
+  // is already the best-tested one in this codebase.
+  if (format === 'xlsx') {
+    onProgress?.('Reading the workbook (a large spreadsheet can take a few seconds)');
+    const { workbookToCsv } = await import('./xlsx');
+    const converted = workbookToCsv(buffer);
+    buffer = converted.csv;
+    workbook = { sheet: converted.sheet.name, otherSheets: converted.otherSheets };
+  }
+
   const virtualPath = `upload_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
   await db.registerFileBuffer(virtualPath, buffer);
 
@@ -109,6 +134,7 @@ export async function ingestFile(
     durationMs: Math.round(performance.now() - started),
     coercions,
     derived,
+    workbook,
   };
 }
 
