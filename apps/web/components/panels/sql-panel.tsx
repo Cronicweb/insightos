@@ -1,9 +1,10 @@
 'use client';
 
 import * as React from 'react';
-import { Play, Database, TriangleAlert } from 'lucide-react';
+import { Play, Database, TriangleAlert, Copy, Check, Languages } from 'lucide-react';
 import { SectionLabel } from '@/components/ui/primitives';
 import type { Analysis, DatasetSchema } from '@/lib/types';
+import { DIALECTS, translate, type Dialect } from '@/lib/sql-dialect';
 
 interface SqlResult {
   columns: string[];
@@ -239,26 +240,43 @@ ORDER BY segment, period;`,
 /**
  * A console over the very same DuckDB instance that produced the analysis, so
  * anything a reader disbelieves in a chart can be re-derived here in SQL.
- */
+ *
+ * The dialect switch is not decoration: it runs a real translator over the
+ * query text. The same question is asked in DuckDB here, in BigQuery at one
+ * employer and in Hive at the next, and porting it - date truncation, date
+ * differencing, quantiles, QUALIFY - is the actual work.
 export function SqlPanel({ analysis }: { analysis: Analysis }) {
-  const table = analysis.key?.startsWith('upload:') ? analysis.key.slice('upload:'.length) : null;
+  const uploaded = analysis.key?.startsWith('upload:') ? analysis.key.slice('upload:'.length) : null;
+  // Demo datasets have no table behind them, but they do carry a profiled
+  // schema - so the recipes are still worth writing and reading, they simply
+  // cannot be executed until a file is loaded.
+  const table = uploaded ?? (analysis.key ?? 'dataset').replace(/[^A-Za-z0-9_]/g, '_');
+  const runnable = uploaded !== null;
+
   const [sql, setSql] = React.useState('');
+  const [dialect, setDialect] = React.useState<Dialect>('duckdb');
   const [result, setResult] = React.useState<SqlResult | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
+  const [copied, setCopied] = React.useState(false);
   const [activeRecipe, setActiveRecipe] = React.useState<string | null>(null);
 
   const recipes = React.useMemo(
-    () => (table ? buildRecipes(table, analysis.schema) : []),
+    () => buildRecipes(table, analysis.schema),
     [table, analysis.schema],
   );
 
   React.useEffect(() => {
-    if (table) setSql(`SELECT *\nFROM ${q(table)}\nLIMIT 20;`);
+    setSql(`SELECT *\nFROM ${q(table)}\nLIMIT 20;`);
+    setResult(null);
+    setError(null);
+    setActiveRecipe(null);
   }, [table]);
 
+  const ported = React.useMemo(() => translate(sql, dialect), [sql, dialect]);
+
   const run = React.useCallback(async () => {
-    if (!sql.trim() || busy) return;
+    if (!runnable || !sql.trim() || busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -270,7 +288,19 @@ export function SqlPanel({ analysis }: { analysis: Analysis }) {
     } finally {
       setBusy(false);
     }
-  }, [sql, busy]);
+  }, [runnable, sql, busy]);
+
+  const copy = React.useCallback(() => {
+    const clip = typeof navigator === 'undefined' ? undefined : navigator.clipboard;
+    if (!clip) return;
+    clip.writeText(ported.sql).then(
+      () => {
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1600);
+      },
+      () => undefined,
+    );
+  }, [ported.sql]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
@@ -279,41 +309,69 @@ export function SqlPanel({ analysis }: { analysis: Analysis }) {
     }
   };
 
-  if (!table) {
-    return (
-      <section className="rounded-2xl border border-line bg-surface p-5 shadow-card">
-        <SectionLabel>SQL console</SectionLabel>
-        <h2 className="mt-1.5 text-base font-semibold tracking-tight">Upload a dataset to query it</h2>
-        <p className="mt-2 max-w-2xl text-[13px] leading-relaxed text-muted">
-          Demo datasets ship as pre-computed analysis results, so there is no table behind them.
-          Upload a CSV, JSON or Parquet file and it is loaded into DuckDB-WASM in this tab - then
-          every figure on every panel becomes queryable here in SQL.
-        </p>
-      </section>
-    );
-  }
-
   return (
     <section className="rounded-2xl border border-line bg-surface p-5 shadow-card">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <SectionLabel>SQL console</SectionLabel>
-          <h2 className="mt-1.5 text-base font-semibold tracking-tight">Query the analysed table</h2>
-          <p className="mt-1.5 text-[13px] text-muted">
-            Running on DuckDB-WASM inside this tab against{' '}
-            <code className="rounded bg-elevated px-1.5 py-0.5 text-[12px]">{table}</code>. Nothing
-            leaves your device.
+          <h2 className="mt-1.5 text-base font-semibold tracking-tight">
+            {runnable ? 'Query the analysed table' : 'Warehouse SQL for this dataset'}
+          </h2>
+          <p className="mt-1.5 max-w-2xl text-[13px] leading-relaxed text-muted">
+            {runnable ? (
+              <>
+                Running on DuckDB-WASM inside this tab against{' '}
+                <code className="rounded bg-elevated px-1.5 py-0.5 text-[12px]">{table}</code>.
+                Nothing leaves your device.
+              </>
+            ) : (
+              <>
+                Demo datasets ship as pre-computed results, so there is no table to execute
+                against - but the query below is the real one the profiler writes for these
+                columns. Switch dialect to port it, or upload a CSV to run it on DuckDB-WASM.
+              </>
+            )}
           </p>
         </div>
         <button
           type="button"
           onClick={() => void run()}
-          disabled={busy}
+          disabled={busy || !runnable}
+          title={runnable ? undefined : 'Upload a dataset to execute SQL'}
           className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-accent px-4 text-[13px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
         >
           <Play className="h-4 w-4" aria-hidden />
           {busy ? 'Running' : 'Run query'}
         </button>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <div
+          role="group"
+          aria-label="SQL dialect"
+          className="inline-flex rounded-xl border border-line bg-elevated p-1"
+        >
+          {DIALECTS.map((d) => (
+            <button
+              key={d.id}
+              type="button"
+              aria-pressed={dialect === d.id}
+              onClick={() => setDialect(d.id)}
+              className={
+                dialect === d.id
+                  ? 'rounded-lg bg-accent px-3 py-1.5 text-[12px] font-medium text-white'
+                  : 'rounded-lg px-3 py-1.5 text-[12px] text-muted transition-colors hover:text-fg'
+              }
+            >
+              {d.label}
+            </button>
+          ))}
+        </div>
+        <p className="text-[12px] text-muted">
+          {dialect === 'duckdb'
+            ? 'Switch to BigQuery or Hive to port the query below, with the caveats a regex cannot fix.'
+            : `Translated from DuckDB to ${DIALECTS.find((d) => d.id === dialect)?.label}. Execution still runs on DuckDB.`}
+        </p>
       </div>
 
       {recipes.length ? (
@@ -340,7 +398,16 @@ export function SqlPanel({ analysis }: { analysis: Analysis }) {
           </div>
           <p className="mt-2 text-[12px] leading-relaxed text-muted">
             Each recipe writes a portable analytical query against the columns the profiler
-            detected, annotated with its BigQuery and Hive equivalent.
+            detected. The full construct-by-construct mapping is in{' '}
+            <a
+              href="https://github.com/Cronicweb/insightos/blob/main/docs/sql-portability.md"
+              target="_blank"
+              rel="noreferrer"
+              className="text-accent underline underline-offset-2"
+            >
+              docs/sql-portability.md
+            </a>
+            .
           </p>
         </div>
       ) : null}
@@ -360,7 +427,47 @@ export function SqlPanel({ analysis }: { analysis: Analysis }) {
         rows={recipes.length ? 12 : 6}
         className="mt-4 w-full resize-y rounded-xl border border-line bg-elevated p-3 font-mono text-[13px] leading-relaxed outline-none focus-visible:ring-2 focus-visible:ring-accent"
       />
-      <p className="mt-1.5 text-[12px] text-muted">Press Ctrl/Cmd + Enter to run.</p>
+      <p className="mt-1.5 text-[12px] text-muted">
+        {runnable ? 'Press Ctrl/Cmd + Enter to run.' : 'Editable - the translation below updates as you type.'}
+      </p>
+
+      {dialect !== 'duckdb' ? (
+        <div className="mt-4 rounded-xl border border-line bg-elevated/50 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-[12px] font-medium">
+              <Languages className="h-3.5 w-3.5 text-accent" aria-hidden />
+              <span>{DIALECTS.find((d) => d.id === dialect)?.label} equivalent</span>
+            </div>
+            <button
+              type="button"
+              onClick={copy}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-[12px] text-muted transition-colors hover:text-fg"
+            >
+              {copied ? (
+                <Check className="h-3.5 w-3.5" aria-hidden />
+              ) : (
+                <Copy className="h-3.5 w-3.5" aria-hidden />
+              )}
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+          </div>
+          <pre className="mt-2 overflow-auto rounded-lg bg-surface p-3 font-mono text-[12.5px] leading-relaxed">
+            <code>{ported.sql}</code>
+          </pre>
+          {ported.notes.length ? (
+            <ul className="mt-2 space-y-1 text-[12px] leading-relaxed text-muted">
+              {ported.notes.map((n) => (
+                <li key={n} className="flex gap-1.5">
+                  <span aria-hidden className="text-accent">
+                    -
+                  </span>
+                  <span>{n}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
 
       {error ? (
         <div
