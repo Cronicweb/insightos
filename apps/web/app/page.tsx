@@ -202,7 +202,7 @@ export default function Page() {
               </>
             ) : (
               <span className="text-2xs text-subtle">
-                CSV, JSON or Parquet. Your data never leaves your device.
+                CSV, Excel, JSON or Parquet. Your data never leaves your device.
               </span>
             )}
           </div>
