@@ -203,7 +203,11 @@ def assess_quality(df: pd.DataFrame, schema: TableSchema) -> QualityReport:
             checks.append(("inconsistent_casing", inconsistent,
                            "same category written with different casing/whitespace"))
         for check_id, mask, why in checks:
-            mask = mask.fillna(False)
+            # Several checks are derived from ``s.dropna()``, so their index is a
+            # strict subset of the column's.  Realign onto the column index before
+            # using the mask - a row that was null cannot also have failed a value
+            # check, and an unaligned boolean indexer raises IndexingError.
+            mask = mask.reindex(s.index, fill_value=False).fillna(False).astype(bool)
             count = int(mask.sum())
             if count == 0:
                 continue
