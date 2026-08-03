@@ -111,7 +111,7 @@ def test_cohort_matrix_starts_at_one_and_decays():
     result = cohort_retention(_transactions(), "customer_id", "order_date", freq="M")
     assert not result.matrix.empty
     first_column = result.matrix[0].dropna()
-    assert (first_column == pytest.approx(1.0)).all()
+    assert first_column.tolist() == pytest.approx([1.0] * len(first_column))
     assert result.curve[0] == pytest.approx(1.0)
     assert result.curve[1] < 1.0
     assert result.period_name == "month"
