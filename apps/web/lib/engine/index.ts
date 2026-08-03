@@ -246,7 +246,14 @@ export async function analyseInBrowser(
   return {
     key: `upload:${ingest.table}`,
     dataset: ingest.fileName,
-    story: `${ingest.rows.toLocaleString('en-GB')} rows analysed entirely in your browser. Detected domain: ${domainLabel(domain.domain)}.`,
+    story: [
+      `${ingest.rows.toLocaleString('en-GB')} rows analysed entirely in your browser.`,
+      `Detected domain: ${domainLabel(domain.domain)}.`,
+      // Type repairs are stated openly: a silently rewritten column is a
+      // reproducibility problem, even when the rewrite was correct.
+      ...ingest.coercions.map((c) => c.note),
+      ...ingest.derived.map((d) => d.note),
+    ].join(' '),
     rows: ingest.rows,
     columns: ingest.columns,
     schema: profile.schema,
