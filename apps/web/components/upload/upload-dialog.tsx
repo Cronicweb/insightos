@@ -6,7 +6,7 @@ import type { Analysis } from '@/lib/types';
 import { Badge } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
 
-const ACCEPT = '.csv,.tsv,.txt,.json,.ndjson,.parquet,.pq';
+const ACCEPT = '.csv,.tsv,.txt,.xlsx,.xlsm,.json,.ndjson,.parquet,.pq';
 
 export function UploadDialog({
   open,
@@ -72,7 +72,7 @@ export function UploadDialog({
               Analyse your own dataset
             </h2>
             <p className="mt-1 text-xs text-subtle">
-              CSV, JSON or Parquet. The full engine runs on your machine.
+              CSV, Excel, JSON or Parquet. The full engine runs on your machine.
             </p>
           </div>
           <button
