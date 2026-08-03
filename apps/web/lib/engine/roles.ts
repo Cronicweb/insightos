@@ -41,6 +41,11 @@ const PATTERNS: RolePattern[] = [
   { role: 'cost', re: /(cost|cogs|expense|spend|opex|salary|wage|payroll)/i, kinds: ['currency'] },
   { role: 'profit', re: /(profit|margin_amount|net_income|contribution)/i, kinds: ['currency'] },
   { role: 'discount', re: /(discount|rebate|promo_amount|markdown)/i, kinds: ['currency', 'percentage'] },
+  // Unit price is claimed explicitly so the revenue fallback below cannot
+  // adopt it. Summing a per-unit price produces a number with no business
+  // meaning; ingestion derives quantity x price into a real revenue column
+  // when the dataset stores money at that grain.
+  { role: 'price', re: /(unit_?price|unit_?cost|price_?per|rate_?per|list_price|^price$|_price$)/i, kinds: ['currency'] },
   { role: 'quantity', re: /(quantity|qty|units|volume|items|seats|doses)/i, kinds: ['count', 'numeric'] },
   { role: 'orders', re: /(order|transaction|invoice|booking|ticket|admission|visit|claim)/i, kinds: ['identifier', 'categorical', 'count'] },
   {

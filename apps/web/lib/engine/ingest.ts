@@ -8,6 +8,12 @@
 import type * as duckdb from '@duckdb/duckdb-wasm';
 import { getDuckDb } from '@/lib/duckdb/client';
 import { ident, lit, query, queryOne, numOr } from './sql';
+import {
+  coerceTemporalColumns,
+  deriveRevenueColumn,
+  type Coercion,
+  type DerivedMeasure,
+} from './coerce';
 
 export type SourceFormat = 'csv' | 'json' | 'parquet';
 
@@ -19,6 +25,10 @@ export interface IngestResult {
   bytes: number;
   fileName: string;
   durationMs: number;
+  /** Text columns that were recovered as real timestamps. */
+  coercions: Coercion[];
+  /** Measures computed at ingest because the raw grain could not be summed. */
+  derived: DerivedMeasure[];
 }
 
 export function detectFormat(fileName: string): SourceFormat | null {
@@ -64,6 +74,25 @@ export async function ingestFile(
   await conn.query(`DROP TABLE IF EXISTS ${ident(table)}`);
   await conn.query(`CREATE TABLE ${ident(table)} AS SELECT * FROM ${readerFor(format, virtualPath)}`);
 
+  // The sniffer is good at ISO dates and poor at regional ones. Repair what it
+  // missed before profiling runs, so a text date column still yields a time
+  // axis - and therefore trends, deltas and a forecast - instead of silently
+  // reducing the analysis to a set of totals.
+  onProgress?.('Repairing column types');
+  let coercions: Coercion[] = [];
+  let derived: DerivedMeasure[] = [];
+  try {
+    coercions = await coerceTemporalColumns(conn, table);
+  } catch {
+    coercions = [];
+  }
+  try {
+    const revenue = await deriveRevenueColumn(conn, table);
+    if (revenue) derived = [revenue];
+  } catch {
+    derived = [];
+  }
+
   const countRow = await queryOne<{ n: unknown }>(conn, `SELECT count(*) AS n FROM ${ident(table)}`);
   const rows = numOr(countRow.n);
   if (rows === 0) throw new Error('The file parsed successfully but contains no rows.');
@@ -78,6 +107,8 @@ export async function ingestFile(
     bytes: file.size,
     fileName: file.name,
     durationMs: Math.round(performance.now() - started),
+    coercions,
+    derived,
   };
 }
 
