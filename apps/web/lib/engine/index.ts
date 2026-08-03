@@ -249,6 +249,15 @@ export async function analyseInBrowser(
     story: [
       `${ingest.rows.toLocaleString('en-GB')} rows analysed entirely in your browser.`,
       `Detected domain: ${domainLabel(domain.domain)}.`,
+      // A workbook holds several tables; saying which one was read is what
+      // makes the row count above checkable rather than merely asserted.
+      ...(ingest.workbook
+        ? [
+            ingest.workbook.otherSheets.length
+              ? `Read sheet "${ingest.workbook.sheet}"; ${ingest.workbook.otherSheets.length} other sheet${ingest.workbook.otherSheets.length === 1 ? '' : 's'} in this workbook were not analysed.`
+              : `Read sheet "${ingest.workbook.sheet}".`,
+          ]
+        : []),
       // Type repairs are stated openly: a silently rewritten column is a
       // reproducibility problem, even when the rewrite was correct.
       ...ingest.coercions.map((c) => c.note),
