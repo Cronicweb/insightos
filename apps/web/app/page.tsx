@@ -16,12 +16,15 @@ import { ReportPanel } from '@/components/panels/report-panel';
 import { QualityPanel } from '@/components/panels/quality-panel';
 import { AnomaliesPanel } from '@/components/panels/anomalies-panel';
 import { ForecastPanel } from '@/components/panels/forecast-panel';
+import { LedgerPanel } from '@/components/panels/ledger-panel';
+import { CaseStudyPanel } from '@/components/panels/case-study-panel';
+import { downloadAnalysisCsv, printReport } from '@/lib/export/report-export';
 import { Badge, SectionLabel, Skeleton } from '@/components/ui/primitives';
 import { fixed, formatInt, formatPct, titleCase } from '@/lib/format';
 import { UploadDialog } from '@/components/upload/upload-dialog';
 import { LandingPage } from '@/components/landing/landing-page';
 import { MobileNav } from '@/components/mobile-nav';
-import { AlertCircle, Upload } from 'lucide-react';
+import { AlertCircle, Download, Printer, Upload } from 'lucide-react';
 import { modeNotice, resolveMode } from '@/lib/mode-copy';
 
 export default function Page() {
@@ -339,6 +342,28 @@ function Workspace({
     );
   }
 
+  if (tab === 'ledger') {
+    return (
+      <div className="space-y-4">
+        <DatasetHeader analysis={analysis} onTab={onTab} />
+        {analysis.ledger ? (
+          <LedgerPanel ledger={analysis.ledger} />
+        ) : (
+          <EmptyState message="This dataset is not an invoice- or transaction-grain extract, so the ledger audit does not apply. It needs an order identifier together with either a line total or a quantity and a unit price." />
+        )}
+      </div>
+    );
+  }
+
+  if (tab === 'case-study') {
+    return (
+      <div className="space-y-4">
+        <DatasetHeader analysis={analysis} onTab={onTab} />
+        <CaseStudyPanel analysis={analysis} />
+      </div>
+    );
+  }
+
   if (tab === 'actions') {
     return (
       <div className="space-y-4">
@@ -351,7 +376,48 @@ function Workspace({
   return (
     <div className="space-y-4">
       <DatasetHeader analysis={analysis} onTab={onTab} />
+      <ExportBar analysis={analysis} />
       <ReportPanel report={analysis.report} />
+    </div>
+  );
+}
+
+/**
+ * Export controls.
+ *
+ * `print-hidden` keeps the buttons out of the PDF they produce - printing a
+ * page that shows a "Download PDF" button looks like a screenshot rather than
+ * a report.
+ */
+function ExportBar({ analysis }: { analysis: Analysis }) {
+  return (
+    <div className="print-hidden flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-surface p-4 shadow-card">
+      <div className="min-w-0 flex-1">
+        <SectionLabel>Download report</SectionLabel>
+        <p className="mt-1 text-2xs leading-relaxed text-muted">
+          CSV exports every figure in long form with its scope and formula, so the numbers can be checked
+          in a spreadsheet. PDF prints this analysis through the browser, keeping the export identical to
+          what is on screen.
+        </p>
+      </div>
+      <div className="flex shrink-0 flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => downloadAnalysisCsv(analysis)}
+          className="inline-flex items-center gap-2 rounded-lg border border-line bg-elevated px-3 py-2 text-xs font-medium text-fg transition hover:border-accent/40 hover:text-accent"
+        >
+          <Download className="h-3.5 w-3.5" />
+          CSV
+        </button>
+        <button
+          type="button"
+          onClick={() => printReport()}
+          className="inline-flex items-center gap-2 rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-xs font-medium text-accent transition hover:bg-accent/15"
+        >
+          <Printer className="h-3.5 w-3.5" />
+          PDF
+        </button>
+      </div>
     </div>
   );
 }

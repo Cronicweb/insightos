@@ -145,3 +145,77 @@ body {
 .recharts-surface:focus {
   outline: none;
 }
+
+/*
+ * Print stylesheet - this is the PDF export.
+ *
+ * The browser's own print pipeline produces the file, so the exported report
+ * cannot drift from the page. Navigation, upload controls and the export
+ * buttons themselves are removed; colours are forced to print faithfully
+ * rather than being dropped to save toner; and cards are prevented from
+ * splitting across a page break mid-table.
+ */
+@media print {
+  :root {
+    --canvas: 255 255 255;
+    --surface: 255 255 255;
+    --elevated: 250 250 250;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    color: #111 !important;
+  }
+
+  .print-hidden,
+  header nav,
+  aside,
+  [data-print="hide"] {
+    display: none !important;
+  }
+
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .shadow-card {
+    box-shadow: none !important;
+  }
+
+  /* A finding split across two pages is a finding a reader loses. */
+  section,
+  table,
+  .rounded-2xl {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Collapsed calculation details would silently drop the audit trail. */
+  details {
+    display: block !important;
+  }
+  details > *:not(summary) {
+    display: block !important;
+  }
+
+  /* Scroll regions must print in full, not clipped to their viewport height. */
+  .overflow-auto,
+  .overflow-x-auto,
+  [class*="max-h-"] {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    font-size: 9px;
+    color: #666;
+  }
+
+  @page {
+    margin: 14mm;
+  }
+}

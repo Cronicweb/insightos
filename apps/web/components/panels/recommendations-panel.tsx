@@ -4,7 +4,7 @@ import * as React from 'react';
 import { ChevronDown, Lightbulb } from 'lucide-react';
 import type { Recommendation, RecommendationSet } from '@/lib/types';
 import { formatValue, titleCase } from '@/lib/format';
-import { SectionLabel } from '../ui/primitives';
+import { Badge, SectionLabel } from '../ui/primitives';
 import { ExplainabilityPanel } from './explainability-panel';
 import { SEVERITY_STYLE, cn } from '@/lib/utils';
 
@@ -106,8 +106,23 @@ function RecommendationCard({ rec }: { rec: Recommendation }) {
           {rec.priority}
         </span>
         <div className="min-w-0 flex-1">
-          <h4 className="text-[15px] font-semibold leading-snug tracking-tight">{rec.title}</h4>
+          <div className="flex flex-wrap items-center gap-2">
+            <h4 className="text-[15px] font-semibold leading-snug tracking-tight">{rec.title}</h4>
+            {rec.hypothesis ? <Badge tone="warning">Hypothesis</Badge> : null}
+          </div>
           <p className="mt-1.5 text-[13px] leading-relaxed text-muted">{rec.action}</p>
+          {rec.hypothesis && rec.hypothesis_reason ? (
+            <p className="mt-2 rounded-lg border border-warning/30 bg-warning/5 px-2.5 py-1.5 text-2xs leading-relaxed text-muted">
+              <span className="font-semibold text-warning">Why this is a hypothesis: </span>
+              {rec.hypothesis_reason}
+            </p>
+          ) : null}
+          {rec.next_action ? (
+            <p className="mt-2 text-2xs leading-relaxed text-muted">
+              <span className="font-semibold text-fg">Next action: </span>
+              {rec.next_action}
+            </p>
+          ) : null}
         </div>
         {rec.estimated_impact !== null ? (
           <div className="shrink-0 text-right">

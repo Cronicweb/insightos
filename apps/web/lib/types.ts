@@ -125,6 +125,17 @@ export interface RootCauseNode {
   delta: number;
   delta_pct: number | null;
   contribution_pct: number | null;
+  /*
+   * The arithmetic behind `contribution_pct`, carried explicitly.
+   *
+   * A contribution above 100% is correct and common - it happens whenever
+   * other segments moved the other way - but it reads as an error unless the
+   * numerator and denominator are visible. Publishing both turns a suspicious
+   * number into a checkable one.
+   */
+  contribution_numerator?: number;
+  contribution_denominator?: number;
+  contribution_explanation?: string;
   share_current_pct: number;
   share_baseline_pct: number;
   share_change_pp: number;
@@ -178,6 +189,11 @@ export interface RootCauseTree {
   confidence: number;
   method_notes: string[];
   excluded_dimensions: string[];
+
+  /** How contribution is defined, stated once for the whole tree. */
+  contribution_method?: string;
+  /** Reasons this particular comparison may mislead - short window, partial period, and so on. */
+  comparison_caveats?: string[];
 }
 
 export interface Anomaly {
@@ -195,6 +211,34 @@ export interface Anomaly {
   severity: Severity;
   confidence: number;
   narrative: string;
+
+  /*
+   * Detection provenance. A flag without its baseline and threshold is an
+   * assertion, not a finding, so the numbers that produced it travel with it.
+   */
+  anomaly_class?: 'statistical' | 'business_rule';
+  baseline_label?: string;
+  threshold_label?: string;
+  financial_impact?: number | null;
+  impact_unit?: Unit;
+  impact_basis?: string;
+  dimension?: string | null;
+  segment?: string | null;
+  suppressed?: boolean;
+  suppression_reason?: string | null;
+}
+
+/** A rule breach, not a statistical outlier. Reported separately on purpose. */
+export interface BusinessException {
+  id: string;
+  rule: string;
+  detail: string;
+  scope: string;
+  rows: number;
+  pct: number;
+  financial_impact: number | null;
+  impact_basis: string;
+  severity: Severity;
 }
 
 export interface SegmentAnomaly {
@@ -217,6 +261,11 @@ export interface AnomalyReport {
   scanned_points: number;
   method_notes: string[];
   critical_count: number;
+
+  business_exceptions?: BusinessException[];
+  suppressed?: Anomaly[];
+  suppression_notes?: string[];
+  detection_summary?: string;
 }
 
 export interface Recommendation {
@@ -240,6 +289,16 @@ export interface Recommendation {
   evidence: Evidence[];
   triggered_by: string;
   success_measure: string;
+
+  /*
+   * A hypothesis is a recommendation whose *premise* is measured but whose
+   * *mechanism* is not observable in this file - typically anything involving
+   * campaign exposure, channel or cost. Labelling it prevents the reader from
+   * mistaking a plausible marketing action for a measured effect.
+   */
+  hypothesis?: boolean;
+  hypothesis_reason?: string;
+  next_action?: string;
 
   /*
    * Governance envelope. A recommendation that only says "increase budget" is
@@ -535,6 +594,196 @@ export interface PluginInfo {
 }
 
 /** The full payload written by `insightos demo build`. */
+/* ------------------------------------------------------------------ *
+ * Transaction-ledger audit
+ *
+ * Emitted only when the table is genuinely an invoice-grain extract. Every
+ * field is optional on `Analysis` so the Python engine's payloads remain valid.
+ * ------------------------------------------------------------------ */
+
+export interface LedgerColumns {
+  invoice: string;
+  quantity: string | null;
+  price: string | null;
+  revenue: string | null;
+  customer: string | null;
+  country: string | null;
+  product: string | null;
+  description: string | null;
+  date: string | null;
+}
+
+export interface LedgerScope {
+  /** Human label shown beside every figure computed in this scope. */
+  label: string;
+  /** The exact predicate applied, so a reviewer can paste it into a query. */
+  filter_sql: string;
+  rows: number;
+  rows_pct: number;
+  date_column: string | null;
+  date_min: string | null;
+  date_max: string | null;
+  last_period_partial: boolean;
+  partial_note: string | null;
+}
+
+export interface LedgerKpi {
+  id: string;
+  label: string;
+  value: number | null;
+  unit: Unit;
+  /** `dataset` covers the whole in-scope file; `period` covers a filtered window. */
+  scope: 'dataset' | 'period';
+  scope_label: string;
+  formula: string;
+  sql: string;
+  numerator?: { label: string; value: number } | null;
+  denominator?: { label: string; value: number } | null;
+  note?: string | null;
+}
+
+export interface LedgerQualityRule {
+  id: string;
+  rule: string;
+  /** The predicate that detects the condition, in plain terms. */
+  detection: string;
+  rows: number;
+  pct: number;
+  treatment: string;
+  impact: string | null;
+}
+
+export interface LedgerReconciliationStep {
+  label: string;
+  rows: number;
+  revenue: number;
+  note: string;
+}
+
+export interface LedgerTrendPoint {
+  period: string;
+  label: string;
+  revenue: number;
+  orders: number;
+  units: number;
+  customers: number;
+}
+
+export interface LedgerTrend {
+  grain: 'day' | 'week' | 'month';
+  points: LedgerTrendPoint[];
+  periods: number;
+  partial_last: boolean;
+  note: string;
+}
+
+export interface ParetoEntry {
+  rank: number;
+  name: string;
+  value: number;
+  share_pct: number;
+  cumulative_pct: number;
+}
+
+export interface ParetoBlock {
+  dimension: string;
+  label: string;
+  kind: string;
+  total: number;
+  entities: number;
+  entries: ParetoEntry[];
+  entities_for_80pct: number;
+  entities_for_80pct_share: number;
+  top1_share_pct: number;
+  headline: string;
+}
+
+export interface RfmSegment {
+  segment: string;
+  customers: number;
+  share_pct: number;
+  revenue: number;
+  revenue_share_pct: number;
+  avg_recency_days: number;
+  avg_frequency: number;
+  avg_monetary: number;
+  action: string;
+}
+
+export interface RfmBlock {
+  as_of: string;
+  customers: number;
+  revenue: number;
+  segments: RfmSegment[];
+  method: string[];
+}
+
+export interface RepeatBlock {
+  identified_customers: number;
+  repeat_customers: number;
+  one_time_customers: number;
+  repeat_rate_pct: number;
+  repeat_revenue: number;
+  repeat_revenue_share_pct: number;
+  anonymous_rows: number;
+  anonymous_pct: number;
+  anonymous_revenue: number;
+  note: string;
+}
+
+export interface LedgerAudit {
+  detected: true;
+  columns: LedgerColumns;
+  grain_note: string;
+  scope: LedgerScope;
+  kpis: LedgerKpi[];
+  quality_rules: LedgerQualityRule[];
+  quality_summary: string;
+  reconciliation: LedgerReconciliationStep[];
+  trends: LedgerTrend[];
+  pareto: ParetoBlock[];
+  rfm: RfmBlock | null;
+  repeat: RepeatBlock | null;
+  notes: string[];
+}
+
+/* ------------------------------------------------------------------ *
+ * Analyst limitations
+ * ------------------------------------------------------------------ */
+
+export interface LimitationItem {
+  id: string;
+  claim: string;
+  /** Why the data cannot support the claim. */
+  why: string;
+  required_data: string[];
+}
+
+export interface LimitationsReport {
+  what_this_is: string;
+  what_this_is_not: string[];
+  cannot_conclude: LimitationItem[];
+  caveats: string[];
+}
+
+/* ------------------------------------------------------------------ *
+ * Portfolio case study
+ * ------------------------------------------------------------------ */
+
+export interface CaseStudySection {
+  id: string;
+  title: string;
+  body: string;
+  bullets: string[];
+}
+
+export interface CaseStudy {
+  title: string;
+  subtitle: string;
+  sections: CaseStudySection[];
+  skills: { group: string; items: string[] }[];
+}
+
 export interface Analysis {
   key: string;
   dataset: string;
@@ -558,6 +807,9 @@ export interface Analysis {
   governance?: GovernanceReport;
   plugin?: PluginInfo;
   groundTruth?: Record<string, unknown>;
+  ledger?: LedgerAudit;
+  limitations?: LimitationsReport;
+  case_study?: CaseStudy;
 }
 
 export interface DatasetSummary {

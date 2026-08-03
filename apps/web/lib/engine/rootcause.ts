@@ -50,6 +50,12 @@ export interface RootCauseInput {
   additive: boolean;
 }
 
+/** Signed, readable formatting so a delta never appears as a bare decimal. */
+function fmt(v: number): string {
+  const sign = v > 0 ? '+' : v < 0 ? '-' : '';
+  return `${sign}${Math.abs(v).toLocaleString('en-GB', { maximumFractionDigits: 2 })}`;
+}
+
 function periodFilter(dateColumn: string, grain: string, period: string): string {
   return `date_trunc('${grain}', CAST(${ident(dateColumn)} AS TIMESTAMP)) = CAST(${lit(period)} AS TIMESTAMP)`;
 }
@@ -151,7 +157,7 @@ function buildNodes(rows: SegmentRow[], dimension: string, totalDelta: number, i
     const pctText = segGrowth === null ? 'from a zero base' : `${segGrowth >= 0 ? '+' : ''}${(segGrowth * 100).toFixed(1)}%`;
     const narrative =
       role === 'driver'
-        ? `${r.segment} moved ${pctText} and accounts for ${Math.abs(contribution ?? 0).toFixed(1)}% of the total change in ${input.metricLabel}.`
+        ? `${r.segment} moved ${fmt(delta)} (${pctText}), which is ${Math.abs(contribution ?? 0).toFixed(1)}% of the ${fmt(totalDelta)} net change in ${input.metricLabel}.`
         : role === 'offset'
           ? `${r.segment} moved ${pctText}, partially offsetting the overall change.`
           : `${r.segment} moved ${pctText}, broadly in line with the business.`;
@@ -165,6 +171,15 @@ function buildNodes(rows: SegmentRow[], dimension: string, totalDelta: number, i
       delta: Number(delta.toFixed(4)),
       delta_pct: segGrowth === null ? null : Number((segGrowth * 100).toFixed(2)),
       contribution_pct: contribution === null ? null : Number(contribution.toFixed(2)),
+      contribution_numerator: Number(delta.toFixed(4)),
+      contribution_denominator: Number(totalDelta.toFixed(4)),
+      contribution_explanation:
+        contribution === null
+          ? 'The total did not move, so no share of a movement can be attributed.'
+          : `${fmt(delta)} (this segment) / ${fmt(totalDelta)} (net total movement) = ${contribution.toFixed(1)}%` +
+            (Math.abs(contribution) > 100
+              ? '. Above 100% because other segments moved the opposite way, so this segment more than accounts for the net figure. The shares across all segments sum to 100%, not the absolute movements.'
+              : '.'),
       share_current_pct: Number(shareCur.toFixed(2)),
       share_baseline_pct: Number(shareBase.toFixed(2)),
       share_change_pp: Number((shareCur - shareBase).toFixed(2)),
@@ -282,10 +297,48 @@ export async function analyseRootCause(
       : isFavourable === false && Math.abs(deltaPct ?? 0) >= 7 ? 'high'
       : isFavourable === false ? 'medium' : 'info';
 
+  // Both readings, always. A percentage without its absolute hides the size of
+  // the business effect; an absolute without its percentage hides the scale.
+  const movement = `${fmt(delta)} (${deltaPct === null ? 'from a zero baseline' : `${deltaPct >= 0 ? '+' : ''}${deltaPct.toFixed(1)}%`})`;
   const headline =
     topDrivers.length && best.dimension
-      ? `${input.metricLabel} ${direction === 'up' ? 'rose' : 'fell'} ${Math.abs(deltaPct ?? 0).toFixed(1)}% ${input.currentLabel} versus ${input.baselineLabel}, concentrated in ${topDrivers.map((d) => d.segment).join(', ')} within ${best.dimension}.`
-      : `${input.metricLabel} ${direction === 'up' ? 'rose' : 'fell'} ${Math.abs(deltaPct ?? 0).toFixed(1)}% with no single segment responsible.`;
+      ? `${input.metricLabel} ${direction === 'up' ? 'rose' : 'fell'} ${movement} in ${input.currentLabel} versus ${input.baselineLabel}, concentrated in ${topDrivers.map((d) => d.segment).join(', ')} within ${best.dimension}.`
+      : `${input.metricLabel} ${direction === 'up' ? 'rose' : 'fell'} ${movement} in ${input.currentLabel} versus ${input.baselineLabel}, with no single segment responsible.`;
+
+  /*
+   * Caveats that belong to the comparison itself rather than to any segment.
+   *
+   * A day-on-day move in transaction data is dominated by the calendar: a
+   * Monday against a Sunday is not a business signal, and the final day of an
+   * extract is usually truncated. Attributing either to a country or a product
+   * is the mistake this block exists to prevent.
+   */
+  const caveats: string[] = [];
+  if (input.grain === 'day') {
+    caveats.push(
+      'This is a single-day comparison. Weekday effects, public holidays and promotional calendars routinely move daily transaction volumes by more than the change reported here, so a day-on-day difference is rarely a business event on its own.',
+    );
+    caveats.push(
+      'If either day is the first or last in the file it may be partial - trading is captured only up to the export timestamp - which depresses that day mechanically.',
+    );
+    caveats.push(
+      'Before acting, confirm the movement persists on a week-on-week or month-on-month view where calendar effects largely cancel.',
+    );
+  } else if (input.grain === 'week') {
+    caveats.push(
+      'Week-on-week comparisons still carry holiday and promotion effects, and a truncated final week reads as a fall. Check the same week last year where seasonality matters.',
+    );
+  }
+  if (topDrivers.some((d) => Math.abs(d.contribution_pct ?? 0) > 100)) {
+    caveats.push(
+      'A contribution above 100% is arithmetically correct, not an error: it occurs when other segments moved in the opposite direction, so the leading segment more than accounts for the net change. The numerator and denominator are shown on each row.',
+    );
+  }
+  if (best.segments_tested <= 2) {
+    caveats.push(
+      `Only ${best.segments_tested} segments were available in ${best.dimension}, so concentration is a property of the data's shape rather than evidence of a cause.`,
+    );
+  }
 
   const narrative: string[] = [headline];
   for (const d of topDrivers) narrative.push(d.narrative);
@@ -322,6 +375,10 @@ export async function analyseRootCause(
     headline,
     narrative,
     confidence: Number(Math.max(0.35, Math.min(0.96, 0.4 + best.explanatory_power * 0.5 + (best.significant_segments ? 0.1 : 0))).toFixed(2)),
+    contribution_method:
+      'Contribution = (segment current - segment baseline) / (total current - total baseline), expressed as a percentage. ' +
+      `Here the denominator is ${fmt(delta)}. Contributions sum to 100% across all segments; individual values may exceed 100% when segments move in opposite directions.`,
+    comparison_caveats: caveats,
     method_notes: [
       'Each segment is decomposed into an expected delta (its baseline scaled by overall growth) and an excess delta that is specific to that segment.',
       'Segment-level significance uses Welch\u2019s t-test on row-level values with a Benjamini-Hochberg correction, because many segments are tested at once.',

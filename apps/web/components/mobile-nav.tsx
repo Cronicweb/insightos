@@ -12,6 +12,8 @@ import {
   Terminal,
   TrendingUp,
   X,
+  ScrollText,
+  BookOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { WorkspaceTab } from './top-nav';
@@ -24,6 +26,8 @@ const PRIMARY: { id: WorkspaceTab; label: string; icon: typeof BarChart3 }[] = [
 ];
 
 const SECONDARY: { id: WorkspaceTab; label: string; icon: typeof BarChart3 }[] = [
+  { id: 'ledger', label: 'Ledger', icon: ScrollText },
+  { id: 'case-study', label: 'Case Study', icon: BookOpen },
   { id: 'quality', label: 'Data Quality', icon: Sparkles },
   { id: 'governance', label: 'Governance', icon: ShieldCheck },
   { id: 'forecast', label: 'Forecast', icon: TrendingUp },

@@ -23,6 +23,9 @@ import { analyseRootCause } from './rootcause';
 import { forecastKpi } from './forecast';
 import { buildRecommendations } from './recommend';
 import { buildExecutiveReport } from './report';
+import { buildLedgerAudit } from './ledger';
+import { buildLimitations } from './limitations';
+import { buildCaseStudy } from './casestudy';
 import { compositionCharts, forecastChart, heroChart, qualityChart, rootCauseChart, type SegmentSlice } from './charts';
 import { runSql } from './ingest';
 import type { IngestResult } from './ingest';
@@ -109,6 +112,7 @@ const STAGE_LABELS: Record<string, string> = {
   anomalies: 'Detecting anomalies',
   recommendations: 'Writing recommendations',
   report: 'Assembling the executive report',
+  ledger: 'Auditing the transaction ledger',
 };
 
 export async function analyseInBrowser(
@@ -225,7 +229,18 @@ export async function analyseInBrowser(
     }, undefined);
   }
 
-  const temporal = detectTemporalAnomalies(scorecard.kpis);
+  // The ledger audit is a stricter, transaction-aware reading of the same
+  // table. It runs only when the file really is an invoice-grain extract, so
+  // other datasets are unaffected rather than shown empty sections. It is
+  // computed before anomaly detection because it knows whether the final
+  // period is truncated, which decides whether the last dip is real.
+  const ledger = await stage(
+    'ledger', () => buildLedgerAudit(conn, table, profile.schema.columns), null,
+  );
+
+  const temporal = detectTemporalAnomalies(
+    scorecard.kpis, ledger?.scope.last_period_partial ?? false,
+  );
   const segmentAnomalies = primary && scorecardResult && currentPeriod && grainExpr
     ? await stage('segment_anomalies', () => detectSegmentAnomalies(
         conn, table, dims, primary.id, primary.label,
@@ -233,17 +248,27 @@ export async function analyseInBrowser(
         `CAST(${grainExpr} AS VARCHAR) = ${lit(currentPeriod)}`,
       ), [])
     : [];
-  const anomalies = buildAnomalyReport(temporal, segmentAnomalies, scorecard.kpis);
+  const anomalies = buildAnomalyReport(temporal.anomalies, segmentAnomalies, scorecard.kpis, {
+    suppressed: temporal.suppressed, ledger,
+  });
 
   if (quality.dimensions.length) charts.push(qualityChart(quality));
   for (const c of charts) narratives.push(c.narrative);
 
-  const recommendations = buildRecommendations({ scorecard, rootCauses, anomalies, quality, plugin });
+  const recommendations = buildRecommendations({
+    scorecard, rootCauses, anomalies, quality, plugin, ledger, columns: profile.schema.columns,
+  });
   const report = buildExecutiveReport({
     dataset: ingest.fileName, domain, scorecard, rootCauses, anomalies, quality, recommendations,
   });
 
-  return {
+  const limitations = buildLimitations(
+    { dataset: ingest.fileName, rows: ingest.rows, domain },
+    profile.schema.columns,
+    ledger,
+  );
+
+  const analysis: BrowserAnalysis = {
     key: `upload:${ingest.table}`,
     dataset: ingest.fileName,
     story: [
@@ -280,7 +305,14 @@ export async function analyseInBrowser(
     warnings,
     privacy,
     source: 'browser',
+    ledger: ledger ?? undefined,
+    limitations,
   };
+
+  // Written last: the case study narrates figures the rest of the payload has
+  // already computed, so it can never disagree with them.
+  analysis.case_study = buildCaseStudy(analysis, ledger, limitations);
+  return analysis;
 }
 
 export interface SqlResult {

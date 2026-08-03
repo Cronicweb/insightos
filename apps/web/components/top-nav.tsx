@@ -14,6 +14,8 @@ export type WorkspaceTab =
   | 'forecast'
   | 'actions'
   | 'sql'
+  | 'ledger'
+  | 'case-study'
   | 'report';
 
 const TABS: { id: WorkspaceTab; label: string }[] = [
@@ -22,9 +24,11 @@ const TABS: { id: WorkspaceTab; label: string }[] = [
   { id: 'quality', label: 'Data Quality' },
   { id: 'governance', label: 'Governance' },
   { id: 'forecast', label: 'Forecast' },
+  { id: 'ledger', label: 'Ledger' },
   { id: 'actions', label: 'Actions' },
   { id: 'sql', label: 'SQL' },
   { id: 'report', label: 'Report' },
+  { id: 'case-study', label: 'Case Study' },
 ];
 
 export function TopNav({

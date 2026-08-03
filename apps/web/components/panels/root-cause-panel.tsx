@@ -42,7 +42,26 @@ export function RootCausePanel({ tree }: { tree: RootCauseTree }) {
               </Badge>
               <Badge tone="neutral">{titleCase(tree.comparison_type.replace(/_/g, ' '))}</Badge>
               <Badge tone="accent">Confidence {fixed(tree.confidence * 100, 0)}%</Badge>
+              {tree.comparison_caveats?.length ? (
+                <Badge tone="warning">Read the caveats</Badge>
+              ) : null}
             </div>
+
+            {tree.comparison_caveats?.length ? (
+              <div className="mt-3 rounded-xl border border-warning/30 bg-warning/5 p-3">
+                <p className="text-2xs font-semibold uppercase tracking-wide text-warning">
+                  Before acting on this comparison
+                </p>
+                <ul className="mt-2 space-y-1.5">
+                  {tree.comparison_caveats.map((c, i) => (
+                    <li key={i} className="flex gap-2 text-2xs leading-relaxed text-muted">
+                      <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-warning" />
+                      <span>{c}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
           </div>
           <dl className="grid w-full grid-cols-3 gap-x-4 gap-y-1 sm:w-auto sm:shrink-0 sm:gap-x-6 sm:text-right">
             <Figure label={tree.baseline_period} value={formatValue(tree.baseline_value, unit)} />
@@ -148,6 +167,11 @@ export function RootCausePanel({ tree }: { tree: RootCauseTree }) {
           {tree.method_notes.length ? (
             <div className="rounded-2xl border border-line bg-surface p-5 shadow-card">
               <SectionLabel>Method</SectionLabel>
+              {tree.contribution_method ? (
+                <p className="mt-2 rounded-lg border border-line bg-elevated px-3 py-2 text-2xs leading-relaxed text-muted">
+                  {tree.contribution_method}
+                </p>
+              ) : null}
               <ul className="mt-2 space-y-1.5">
                 {tree.method_notes.map((m, i) => (
                   <li key={i} className="text-2xs leading-relaxed text-muted">
@@ -260,6 +284,13 @@ function NodeRow({
                 hint={`expected ${formatValue(node.expected_delta, unit)}`}
               />
             </div>
+
+            {node.contribution_explanation ? (
+              <p className="mt-2 rounded-lg border border-line bg-elevated px-2.5 py-1.5 text-2xs leading-relaxed text-muted">
+                <span className="font-semibold text-fg">Contribution: </span>
+                {node.contribution_explanation}
+              </p>
+            ) : null}
           </div>
         </div>
       </div>

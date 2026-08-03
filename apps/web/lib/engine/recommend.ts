@@ -6,8 +6,8 @@
  * that is the difference between an analytics platform and a horoscope.
  */
 import type {
-  AnomalyReport, Evidence, Kpi, QualityReport, Recommendation,
-  RecommendationSet, RootCauseTree, Scorecard,
+  AnomalyReport, ColumnProfile, Evidence, Kpi, LedgerAudit, QualityReport,
+  Recommendation, RecommendationSet, RootCauseTree, Scorecard,
 } from '@/lib/types';
 import type { DomainPlugin } from './plugins';
 import { formatValue } from '@/lib/format';
@@ -18,6 +18,9 @@ interface RuleContext {
   anomalies: AnomalyReport;
   quality: QualityReport;
   plugin: DomainPlugin;
+  /** Present only for invoice-grain extracts; the ledger rules stay silent without it. */
+  ledger?: LedgerAudit | null;
+  columns?: ColumnProfile[];
 }
 
 function priorityFrom(score: number): Recommendation['priority'] {
@@ -190,8 +193,284 @@ function ruleAdverseTrend(ctx: RuleContext): Recommendation[] {
   return out;
 }
 
+/* ------------------------------------------------------------------ *
+ * Ledger rules
+ *
+ * These fire from the transaction audit rather than from the generic
+ * scorecard, so they can name a concrete customer segment, quote the exact
+ * denominator behind the claim, and - crucially - say when the action they
+ * propose cannot be *measured* with the data at hand.
+ *
+ * A recommendation whose mechanism is unobservable is still worth making; it
+ * is not worth pretending is proven. Those are marked `hypothesis` with the
+ * missing evidence named.
+ * ------------------------------------------------------------------ */
+
+const CAMPAIGN_RE = /(campaign|channel|utm|exposure|impression|spend|cost|cpa|roas)/i;
+
+function campaignDataPresent(columns: { name: string }[] | undefined): boolean {
+  return (columns ?? []).some((c) => CAMPAIGN_RE.test(c.name));
+}
+
+/**
+ * Marketing actions on a bare transaction file are hypotheses by construction:
+ * the file records purchases, never the exposure that might have caused them.
+ */
+function hypothesisEnvelope(ctx: RuleContext): { hypothesis: boolean; hypothesis_reason?: string } {
+  if (campaignDataPresent(ctx.columns)) return { hypothesis: false };
+  return {
+    hypothesis: true,
+    hypothesis_reason:
+      'This file contains retail transactions only - no campaign exposure, channel, cost or cardmember attributes. ' +
+      'The segment and its value are measured; the marketing mechanism is not observable here, so uplift and ROI would have to be established by a controlled test.',
+  };
+}
+
+/** Rule 5: single-purchase customers are the largest addressable base. */
+function ruleActivation(ctx: RuleContext): Recommendation[] {
+  const repeat = ctx.ledger?.repeat;
+  if (!repeat || !repeat.identified_customers) return [];
+  const oneTime = repeat.one_time_customers;
+  if (oneTime < 20) return [];
+
+  const book = playbook(ctx.plugin, 'growth');
+  const share = 100 - repeat.repeat_rate_pct;
+  const avgRepeatValue = repeat.repeat_customers ? repeat.repeat_revenue / repeat.repeat_customers : 0;
+  const oneTimeRevenue = Math.max(0, ctx.ledger!.kpis.find((k) => k.id === 'revenue')?.value ?? 0) - repeat.repeat_revenue;
+  const avgOneTimeValue = oneTime ? oneTimeRevenue / oneTime : 0;
+  const gap = Math.max(0, avgRepeatValue - avgOneTimeValue);
+  // Deliberately conservative: 5% of the one-time base closing the value gap.
+  const impact = gap * oneTime * 0.05;
+  const score = Math.min(92, 45 + share * 0.4);
+  const env = hypothesisEnvelope(ctx);
+
+  return [{
+    id: 'rec.ledger.activation',
+    title: 'Convert one-time buyers to a second purchase',
+    action:
+      `Target the ${oneTime.toLocaleString('en-GB')} customers with exactly one invoice (${share.toFixed(1)}% of the identified base) ` +
+      'with a second-purchase programme, prioritised by first-order value and recency.',
+    rationale:
+      `Repeat customers average ${avgRepeatValue.toFixed(0)} of revenue against ${avgOneTimeValue.toFixed(0)} for one-time buyers - ` +
+      `a gap of ${gap.toFixed(0)} per customer. The first repeat purchase is the point where that gap opens, so it is the highest-leverage moment in the lifecycle. ` +
+      `Impact assumes only 5% of the one-time base closes the gap.`,
+    category: book.category,
+    priority: priorityFrom(score),
+    priority_score: Number(score.toFixed(1)),
+    confidence: env.hypothesis ? 0.55 : 0.72,
+    effort: book.effort ?? 'medium',
+    horizon: book.horizon ?? '1-2 quarters',
+    owner_hint: book.owner,
+    estimated_impact: Number(impact.toFixed(2)),
+    impact_unit: 'currency',
+    impact_basis: '5% of one-time customers closing the observed value gap to repeat customers. A deliberately conservative, arithmetic estimate - not a forecast.',
+    metric: 'repeat_rate',
+    dimension: ctx.ledger!.columns.customer,
+    segment: 'One-time customers',
+    evidence: [
+      { label: 'One-time customers', value: oneTime, comparison: `of ${repeat.identified_customers.toLocaleString('en-GB')} identified` },
+      { label: 'Repeat rate', value: Number(repeat.repeat_rate_pct.toFixed(2)), comparison: '% of identified customers with >1 invoice' },
+      { label: 'Average revenue, repeat', value: Number(avgRepeatValue.toFixed(2)) },
+      { label: 'Average revenue, one-time', value: Number(avgOneTimeValue.toFixed(2)) },
+    ],
+    triggered_by: 'ledger_activation',
+    success_measure: `Repeat rate rises from ${repeat.repeat_rate_pct.toFixed(1)}% by at least 2 points within two quarters, measured on the same identified-customer denominator.`,
+    next_action: 'Extract the one-time cohort with first-order date, value and category; hold back a randomised 10% as a control before any contact.',
+    ...env,
+  }];
+}
+
+/** Rule 6: revenue concentrated in few customers is a retention exposure. */
+function ruleHighValueRetention(ctx: RuleContext): Recommendation[] {
+  const pareto = ctx.ledger?.pareto.find((p) => p.kind === 'customer');
+  if (!pareto || pareto.entities < 20) return [];
+
+  const book = playbook(ctx.plugin, 'retention');
+  const share = pareto.entities_for_80pct_share;
+  // Only interesting when concentration is real rather than a flat distribution.
+  if (share > 45) return [];
+  const atRisk = ctx.ledger?.rfm?.segments.find((s) => s.segment === 'At risk' || s.segment === 'Lost high value');
+  const impact = atRisk ? atRisk.revenue * 0.25 : pareto.total * 0.02;
+  const score = Math.min(95, 60 + (45 - share));
+  const env = hypothesisEnvelope(ctx);
+
+  return [{
+    id: 'rec.ledger.retention',
+    title: 'Put the top revenue customers under named account cover',
+    action:
+      `${pareto.entities_for_80pct.toLocaleString('en-GB')} of ${pareto.entities.toLocaleString('en-GB')} customers (${share.toFixed(1)}%) generate 80% of revenue. ` +
+      'Assign them named ownership with a contact cadence and a churn early-warning trigger on days-since-last-order.',
+    rationale:
+      `Concentration this high means the loss of a small number of accounts moves the top line more than any realistic acquisition programme replaces. ` +
+      (atRisk
+        ? `${atRisk.customers.toLocaleString('en-GB')} customers already sit in the "${atRisk.segment}" RFM band carrying ${atRisk.revenue.toFixed(0)} of historic revenue.`
+        : 'Retention spend on this group has a higher expected return than acquisition spend at the same budget.'),
+    category: book.category,
+    priority: priorityFrom(score),
+    priority_score: Number(score.toFixed(1)),
+    confidence: 0.78,
+    effort: book.effort ?? 'medium',
+    horizon: book.horizon ?? '1 quarter',
+    owner_hint: book.owner,
+    estimated_impact: Number(impact.toFixed(2)),
+    impact_unit: 'currency',
+    impact_basis: atRisk
+      ? 'Recovering a quarter of the historic revenue sitting in the at-risk RFM band.'
+      : '2% of revenue currently concentrated in the top customer decile.',
+    metric: 'revenue',
+    dimension: ctx.ledger!.columns.customer,
+    segment: `Top ${share.toFixed(0)}% of customers`,
+    evidence: [
+      { label: 'Customers producing 80% of revenue', value: pareto.entities_for_80pct, comparison: `of ${pareto.entities}` },
+      { label: 'Concentration', value: Number(share.toFixed(2)), comparison: '% of customers for 80% of revenue' },
+      ...(atRisk ? [{ label: `${atRisk.segment} revenue`, value: atRisk.revenue, comparison: `${atRisk.customers} customers` }] : []),
+    ],
+    triggered_by: 'ledger_concentration',
+    success_measure: 'Revenue retention rate for the named-cover cohort stays above 90% quarter on quarter.',
+    next_action: 'Rank customers by trailing-12-month revenue, join to days-since-last-order, and route the top decile with a rising recency to account owners this week.',
+    ...env,
+  }];
+}
+
+/** Rule 7: an RFM band with disproportionate value deserves its own treatment. */
+function ruleSegmentTargeting(ctx: RuleContext): Recommendation[] {
+  const rfm = ctx.ledger?.rfm;
+  if (!rfm || rfm.segments.length < 3) return [];
+  // Efficiency, not size: value per customer relative to the book average.
+  const avgValue = rfm.customers ? rfm.revenue / rfm.customers : 0;
+  if (!avgValue) return [];
+  const target = [...rfm.segments]
+    .filter((s) => s.customers >= 10 && s.segment !== 'Champions')
+    .sort((a, b) => b.avg_monetary / avgValue - a.avg_monetary / avgValue)[0];
+  if (!target || target.avg_monetary < avgValue * 1.2) return [];
+
+  const book = playbook(ctx.plugin, 'growth');
+  const lift = target.avg_monetary / avgValue;
+  const score = Math.min(85, 40 + (lift - 1) * 30);
+  const env = hypothesisEnvelope(ctx);
+
+  return [{
+    id: `rec.ledger.segment.${target.segment.replace(/\W+/g, '_').toLowerCase()}`,
+    title: `Give "${target.segment}" its own offer rather than the general message`,
+    action: `${target.action} This band holds ${target.customers.toLocaleString('en-GB')} customers (${target.share_pct.toFixed(1)}% of the base) producing ${target.revenue_share_pct.toFixed(1)}% of identified revenue.`,
+    rationale:
+      `Average customer value in this band is ${target.avg_monetary.toFixed(0)}, ${lift.toFixed(1)}x the book average of ${avgValue.toFixed(0)}. ` +
+      `Average recency is ${target.avg_recency_days.toFixed(0)} days and average frequency ${target.avg_frequency.toFixed(1)} invoices. ` +
+      'Treating a band this distinct with the general message spends the same money for a materially lower response.',
+    category: book.category,
+    priority: priorityFrom(score),
+    priority_score: Number(score.toFixed(1)),
+    confidence: env.hypothesis ? 0.5 : 0.68,
+    effort: 'low',
+    horizon: book.horizon ?? '1 quarter',
+    owner_hint: book.owner,
+    estimated_impact: Number((target.revenue * 0.03).toFixed(2)),
+    impact_unit: 'currency',
+    impact_basis: '3% incremental revenue on the segment, the low end of published segmentation effects. Not measurable from this file.',
+    metric: 'revenue',
+    dimension: 'RFM segment',
+    segment: target.segment,
+    evidence: [
+      { label: 'Customers in band', value: target.customers, comparison: `${target.share_pct.toFixed(1)}% of identified base` },
+      { label: 'Revenue share', value: Number(target.revenue_share_pct.toFixed(2)), comparison: '% of identified revenue' },
+      { label: 'Average value vs book', value: Number(lift.toFixed(2)), comparison: 'x the average customer' },
+      { label: 'Average recency', value: Number(target.avg_recency_days.toFixed(1)), comparison: 'days since last order' },
+    ],
+    triggered_by: 'ledger_rfm',
+    success_measure: `Response rate for this band exceeds the control cell by a margin significant at p<0.05 on a pre-registered sample size.`,
+    next_action: 'Build the segment list, split randomly into treatment and control, and size the test for the minimum detectable effect before launch.',
+    ...env,
+  }];
+}
+
+/** Rule 8: cancellations at scale are a margin leak, not a rounding item. */
+function ruleCancellations(ctx: RuleContext): Recommendation[] {
+  const kpi = ctx.ledger?.kpis.find((k) => k.id === 'cancellation_rate');
+  if (!kpi || kpi.value === null || kpi.value < 1) return [];
+  const rule = ctx.ledger?.quality_rules.find((r) => r.id === 'cancelled');
+  const book = playbook(ctx.plugin, 'operations');
+  const score = Math.min(88, 40 + kpi.value * 6);
+
+  return [{
+    id: 'rec.ledger.cancellations',
+    title: 'Diagnose the cancellation and returns pathway',
+    action:
+      `${kpi.value.toFixed(2)}% of invoices are cancellations (${kpi.numerator?.value.toLocaleString('en-GB')} of ${kpi.denominator?.value.toLocaleString('en-GB')}). ` +
+      'Break them down by product, customer and reason code to separate stock and quality problems from ordering-process problems.',
+    rationale:
+      'Cancellations consume picking, packing and payment-processing cost that is never recovered, and they are invisible in a revenue chart because they net out. ' +
+      (rule?.impact ? rule.impact : 'The rate here is high enough to be operational rather than incidental.'),
+    category: book.category,
+    priority: priorityFrom(score),
+    priority_score: Number(score.toFixed(1)),
+    confidence: 0.8,
+    effort: 'medium',
+    horizon: book.horizon ?? '1 quarter',
+    owner_hint: book.owner,
+    estimated_impact: null,
+    impact_unit: 'currency',
+    impact_basis: 'Not quantifiable from this file: the monetary value of a cancellation is the handling cost, and no cost column is present.',
+    metric: 'cancellation_rate',
+    dimension: ctx.ledger!.columns.invoice,
+    segment: 'Cancelled invoices',
+    evidence: [
+      { label: 'Cancelled invoices', value: kpi.numerator?.value ?? null, comparison: `of ${kpi.denominator?.value ?? 0} invoices` },
+      { label: 'Cancellation rate', value: Number(kpi.value.toFixed(2)), comparison: '% of invoices' },
+      ...(rule ? [{ label: 'Cancelled rows', value: rule.rows, comparison: `${rule.pct.toFixed(2)}% of all rows` }] : []),
+    ],
+    triggered_by: 'ledger_cancellations',
+    success_measure: 'Cancellation rate falls by a quarter within two quarters, measured on the same invoice denominator.',
+    next_action: 'Join cancelled invoices back to their originals by customer and product to find which SKUs and which customers drive the rate.',
+  }];
+}
+
+/** Rule 9: revenue that cannot be attributed to a customer caps every programme. */
+function ruleIdentityCapture(ctx: RuleContext): Recommendation[] {
+  const repeat = ctx.ledger?.repeat;
+  if (!repeat || repeat.anonymous_pct < 10) return [];
+  const book = playbook(ctx.plugin, 'data');
+  const score = Math.min(90, 40 + repeat.anonymous_pct);
+
+  return [{
+    id: 'rec.ledger.identity',
+    title: 'Close the customer-identity gap at point of sale',
+    action:
+      `${repeat.anonymous_pct.toFixed(1)}% of in-scope rows carry no customer identifier, covering ${repeat.anonymous_revenue.toLocaleString('en-GB')} of revenue. ` +
+      'Capture identity at checkout for those channels before investing further in personalisation.',
+    rationale:
+      'Every customer-level programme - repeat campaigns, lifetime value, retention triggers, RFM - is computable only on identified customers. ' +
+      `This gap is a hard ceiling on their reach, and it is a measurement problem before it is a marketing one: today's repeat rate of ` +
+      `${repeat.repeat_rate_pct.toFixed(1)}% describes the identified subset, and the unidentified rows may not behave like it.`,
+    category: book.category,
+    priority: priorityFrom(score),
+    priority_score: Number(score.toFixed(1)),
+    confidence: 0.85,
+    effort: 'medium',
+    horizon: '2 quarters',
+    owner_hint: book.owner,
+    estimated_impact: Number(repeat.anonymous_revenue.toFixed(2)),
+    impact_unit: 'currency',
+    impact_basis: 'Revenue currently outside the reach of any customer-level programme. This is addressable revenue, not incremental revenue.',
+    metric: 'customers',
+    dimension: ctx.ledger!.columns.customer,
+    segment: 'Unidentified transactions',
+    evidence: [
+      { label: 'Rows without a customer id', value: repeat.anonymous_rows, comparison: `${repeat.anonymous_pct.toFixed(2)}% of in-scope rows` },
+      { label: 'Revenue affected', value: repeat.anonymous_revenue },
+      { label: 'Identified customers', value: repeat.identified_customers },
+    ],
+    triggered_by: 'ledger_identity',
+    success_measure: 'Share of revenue attributable to an identified customer rises by 10 points within two quarters.',
+    next_action: 'Split the unidentified rows by channel and country to find where capture fails, then fix the highest-revenue path first.',
+  }];
+}
+
 export function buildRecommendations(ctx: RuleContext): RecommendationSet {
-  const rules = [ruleConcentratedDriver, ruleSegmentAnomaly, ruleQualityGate, ruleAdverseTrend];
+  const rules = [
+    ruleConcentratedDriver, ruleSegmentAnomaly, ruleQualityGate, ruleAdverseTrend,
+    ruleActivation, ruleHighValueRetention, ruleSegmentTargeting, ruleCancellations,
+    ruleIdentityCapture,
+  ];
   const errors: string[] = [];
   let fired = 0;
   const all: Recommendation[] = [];
@@ -221,7 +500,7 @@ export function buildRecommendations(ctx: RuleContext): RecommendationSet {
         : r,
     )
     .sort((a, b) => b.priority_score - a.priority_score)
-    .slice(0, 8);
+    .slice(0, 10);
 
   const impacts = recommendations.map((r) => r.estimated_impact).filter((v): v is number => typeof v === 'number');
   const total = impacts.length ? Number(impacts.reduce((a, b) => a + Math.abs(b), 0).toFixed(2)) : null;
@@ -232,7 +511,11 @@ export function buildRecommendations(ctx: RuleContext): RecommendationSet {
     rules_fired: fired,
     total_estimated_impact: total,
     narrative: recommendations.length
-      ? `${recommendations.length} recommendations were generated from ${fired} of ${rules.length} deterministic rules. Each is backed by a named statistical test and can be traced to the evidence that fired it.${degraded ? ' Data quality is below the confidence threshold, so recommendations are framed as investigations.' : ''}`
+      ? `${recommendations.length} recommendations were generated from ${fired} of ${rules.length} deterministic rules. Each is backed by a named statistical test and can be traced to the evidence that fired it.${degraded ? ' Data quality is below the confidence threshold, so recommendations are framed as investigations.' : ''}${
+          recommendations.some((r) => r.hypothesis)
+            ? ` ${recommendations.filter((r) => r.hypothesis).length} are labelled hypotheses: the segment and its value are measured, but the dataset holds no campaign, channel or cost field, so any uplift claim would have to come from a controlled test rather than from this file.`
+            : ''
+        }`
       : 'No rule thresholds were crossed. The dataset shows no statistically significant adverse movement that warrants action.',
     rule_errors: errors,
   };
