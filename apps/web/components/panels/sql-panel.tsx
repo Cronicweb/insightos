@@ -268,11 +268,16 @@ export function SqlPanel({ analysis }: { analysis: Analysis }) {
   );
 
   React.useEffect(() => {
-    setSql(`SELECT *\nFROM ${q(table)}\nLIMIT 20;`);
+    // Open on a real analytical query rather than SELECT *. A star query looks
+    // identical in all three dialects, which makes the translator read as
+    // decoration; the first recipe uses date truncation and a window function,
+    // so switching dialect visibly rewrites the text.
+    const opening = recipes[0];
+    setSql(opening ? opening.sql : `SELECT *\nFROM ${q(table)}\nLIMIT 20;`);
     setResult(null);
     setError(null);
-    setActiveRecipe(null);
-  }, [table]);
+    setActiveRecipe(opening ? opening.id : null);
+  }, [table, recipes]);
 
   const ported = React.useMemo(() => translate(sql, dialect), [sql, dialect]);
 
@@ -321,9 +326,10 @@ export function SqlPanel({ analysis }: { analysis: Analysis }) {
           <p className="mt-1.5 max-w-2xl text-[13px] leading-relaxed text-muted">
             {runnable ? (
               <>
-                Running on DuckDB-WASM inside this tab against{' '}
-                <code className="rounded bg-elevated px-1.5 py-0.5 text-[12px]">{table}</code>.
-                Nothing leaves your device.
+                Executed by DuckDB-WASM inside this tab against{' '}
+                <code className="rounded bg-elevated px-1.5 py-0.5 text-[12px]">{table}</code>, so
+                nothing leaves your device. BigQuery and Hive below are transpilation targets for
+                copy-paste into a warehouse - they are never executed here.
               </>
             ) : (
               <>
@@ -371,7 +377,7 @@ export function SqlPanel({ analysis }: { analysis: Analysis }) {
         <p className="text-[12px] text-muted">
           {dialect === 'duckdb'
             ? 'Switch to BigQuery or Hive to port the query below, with the caveats a regex cannot fix.'
-            : `Translated from DuckDB to ${DIALECTS.find((d) => d.id === dialect)?.label}. Execution still runs on DuckDB.`}
+            : `Transpiled for ${DIALECTS.find((d) => d.id === dialect)?.label} - copy it into the warehouse. Execution here stays on DuckDB.`}
         </p>
       </div>
 
@@ -407,6 +413,15 @@ export function SqlPanel({ analysis }: { analysis: Analysis }) {
               className="text-accent underline underline-offset-2"
             >
               docs/sql-portability.md
+            </a>
+            ; why a dialect toggle exists when execution is DuckDB is answered in{' '}
+            <a
+              href="https://github.com/Cronicweb/insightos/blob/main/docs/sql-execution-model.md"
+              target="_blank"
+              rel="noreferrer"
+              className="text-accent underline underline-offset-2"
+            >
+              docs/sql-execution-model.md
             </a>
             .
           </p>
