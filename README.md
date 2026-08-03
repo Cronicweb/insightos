@@ -45,6 +45,11 @@ deterministically. Point it at a dataframe and it will, without configuration:
    carrying the rule that fired and the evidence rows it consumed.
 9. **Write the executive report** - headline, summary, key numbers, sections,
    limitations - as Markdown.
+10. **Design and read out experiments** - power and minimum detectable effect
+    before launch; sample-ratio-mismatch, CUPED variance reduction and
+    alpha-spending-corrected significance after.
+11. **Measure customer value** - RFM segmentation, cohort retention curves and
+    a lifetime-value model with an explicit discount rate.
 
 Everything above is **deterministic**. No language model is involved in
 producing a single number, causal claim, or recommendation. An optional polish
@@ -97,7 +102,7 @@ against a known answer.
 git clone https://github.com/Cronicweb/insightos.git
 cd insightos/packages/analytics-core
 pip install -e ".[dev]"
-pytest -q          # 62 tests
+pytest -q          # 189 tests
 ruff check insightos tests
 ```
 
@@ -136,6 +141,8 @@ insightos/
 |       |-- kpi/                    role assignment, domain inference, registry
 |       |-- anomaly/                temporal + cross-sectional detection
 |       |-- root_cause/             the decomposition engine
+|       |-- experiment/             power/MDE design, SRM, CUPED, DiD, iROAS
+|       |-- clv/                    RFM, cohort retention, lifetime value
 |       |-- forecast/               model selection, intervals, backtests
 |       |-- recommendation/         deterministic rules over computed evidence
 |       |-- narrative/              template composition (+ optional LLM polish)
@@ -308,6 +315,75 @@ A **SQL console** is exposed in the workspace so the generated SQL is not a
 black box - you can read it, edit it, and run your own queries against the
 uploaded table.
 
+### Portable by construction
+
+DuckDB is an implementation detail, not a dependency. The generated SQL is
+written in the ANSI subset that ports to **BigQuery** and **Hive** with a
+bounded set of substitutions - no `QUALIFY`, no `FILTER (WHERE ...)`, every
+denominator wrapped in `NULLIF`, grouped expressions referenced by ordinal so
+that a date-truncation call is a one-line edit rather than a rewrite.
+
+The console ships seven **recipes** built against whichever columns the profiler
+detected in your file - period-over-period growth, top-N per period, running
+totals, Pareto concentration, cohort retention, quantile distributions and
+`GROUPING SETS` subtotals - each annotated inline with its BigQuery and Hive
+equivalent. [docs/sql-portability.md](docs/sql-portability.md) gives the full
+construct translation table and writes out five analytical patterns in all
+three dialects.
+
+## Experimentation and incrementality
+
+A recommendation is a hypothesis. `insightos.experiment` is the module that
+tests one, and it is built around the failures that actually invalidate
+experiment readouts in practice rather than the textbook happy path.
+
+**Before launch** - `design.py` computes required sample size from baseline
+rate, minimum detectable effect, power and alpha, applies a Bonferroni
+correction for multi-arm tests, converts the requirement into a runtime given
+observed daily traffic, and reports the MDE actually achievable if you only
+have the traffic you have.
+
+**After launch** - `analysis.py` refuses to read out an experiment it does not
+trust:
+
+| Guard | What it catches |
+| --- | --- |
+| Sample ratio mismatch | assignment is broken; a chi-square test at a deliberately strict `alpha = 0.001` marks the readout **invalid** and short-circuits the decision |
+| Sequential alpha spending | O'Brien-Fleming boundaries, so peeking at 40% of planned traffic does not silently inflate the false-positive rate |
+| CUPED | pre-period covariate adjustment; typically 20-50% variance reduction, which is the same as buying weeks of traffic for free |
+| Multiple comparisons | Benjamini-Hochberg across variants |
+
+The decision vocabulary is deliberately narrow - `ship`, `do not ship`,
+`keep running`, `no difference detected`, `invalid` - because "trending
+positive" is how underpowered tests get shipped.
+
+**Incrementality** - `incrementality.py` answers the question a lift number
+cannot: how much of this would have happened anyway. It implements holdout
+lift, **difference-in-differences** for geo and time-staggered rollouts,
+incremental ROAS with its confidence interval, and payback period. It raises on
+zero spend rather than returning an infinite ROAS, because a silently infinite
+return is how a broken pipeline reaches a slide.
+
+## Customer lifetime value
+
+`insightos.clv` covers the three questions a portfolio owner asks about a
+customer base.
+
+- **Who is valuable now** - `rfm.py` scores recency, frequency and monetary
+  value into eleven named segments, each with an attached action. Scoring uses
+  rank percentiles rather than `qcut`, because real transaction data has a mode
+  at frequency = 1 that spans several quintile boundaries and makes tile
+  assignment arbitrary.
+- **Who stays** - `cohort.py` builds the retention matrix, fits a decay curve,
+  and estimates steady-state retention. Cells beyond a cohort's observable
+  horizon stay `NaN`, never 0, so a young cohort is never reported as churned
+  when it is merely young. The retention curve is size-weighted over fully
+  observed cohorts only.
+- **What they are worth** - `value.py` computes
+  `AOV x frequency x margin x r/(1+d-r)` with an explicit discount rate, or a
+  truncated finite-horizon sum, plus a CAC payback ratio and an unfitted
+  BG/NBD-style probability-alive heuristic used strictly for ranking.
+
 ## Privacy layer
 
 Before a single row is displayed, the dataset is scanned for sensitive fields
@@ -387,8 +463,10 @@ and dismissed are as informative as the one it kept.
 ## Roadmap
 
 - [x] DuckDB execution backend (shipped as DuckDB-WASM, in-browser)
-- [ ] Causal-inference module: difference-in-differences for campaign readouts
-- [ ] Cohort and retention engine with survival curves
+- [x] Causal-inference module: difference-in-differences for campaign readouts
+- [x] Cohort and retention engine with decay curves and steady-state retention
+- [ ] Wire the experiment and CLV engines into the pipeline and the workspace UI
+- [ ] Survival analysis: Kaplan-Meier churn curves with confidence bands
 - [ ] Scheduled monitoring: run the pipeline nightly and alert on new drivers
 - [ ] Semantic layer so metric definitions are declared once and reused
 - [ ] Power BI custom visual that embeds the root-cause tree
@@ -403,12 +481,27 @@ and dismissed are as informative as the one it kept.
 - Implemented the statistical layer from first principles (Welch's t-test,
   Mann-Whitney U, Benjamini-Hochberg FDR control, robust MAD-based z-scores,
   seasonal-trend decomposition, inverse-normal CDF), validated against reference
-  values by a 62-test suite that surfaced three genuine numerical defects.
+  values by a 189-test suite that surfaced three genuine numerical defects.
 - Built a root-cause decomposition engine that tests each segment against the
   null hypothesis "moved in line with the total", applies multiple-comparison
   correction across all candidate dimensions, and ranks dimensions by an
   explanatory-power score - validated against planted ground truth in synthetic
   datasets.
+- Built an **experimentation framework** covering the full A/B lifecycle: power
+  and minimum-detectable-effect sizing with Bonferroni correction for multi-arm
+  tests, sample-ratio-mismatch detection that invalidates a broken readout,
+  CUPED variance reduction, and O'Brien-Fleming sequential alpha spending so
+  interim peeks do not inflate false positives.
+- Implemented **incrementality measurement** - holdout lift,
+  difference-in-differences for geo and staggered rollouts, and incremental
+  ROAS with confidence intervals and payback period - to separate marketing
+  impact from what would have happened anyway.
+- Built a **customer lifetime value engine**: RFM segmentation into eleven
+  actioned segments, cohort retention matrices with fitted decay and
+  steady-state estimation, and discounted CLV with CAC payback ratios.
+- Wrote the aggregation layer in **portable SQL** validated across DuckDB,
+  BigQuery and Hive, with a documented construct-translation reference and an
+  in-product SQL console offering seven column-aware analytical recipes.
 - Enforced the product's central guarantee - *no chart without an explanation* -
   as a construction-time invariant in the type system and as a CI assertion at
   the HTTP boundary.
@@ -434,6 +527,7 @@ and dismissed are as informative as the one it kept.
 
 - [Architecture](docs/architecture.md) - module boundaries and the data contract
 - [Methodology](docs/methodology.md) - the statistics, in detail
+- [SQL portability](docs/sql-portability.md) - DuckDB, BigQuery and Hive
 - [Contributing](CONTRIBUTING.md)
 - [Code of Conduct](CODE_OF_CONDUCT.md)
 - [Security policy](SECURITY.md)
