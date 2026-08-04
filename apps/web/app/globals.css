@@ -181,6 +181,22 @@ body {
     margin: 0 !important;
   }
 
+  /*
+   * Chrome fragments flex containers badly: a flex item taller than one sheet
+   * spills onto pages appended after the container, while the next sibling in
+   * the DOM keeps its original in-flow position. The colophon therefore printed
+   * in the middle of the report with the overflow trailing behind it. Collapsing
+   * the two shell wrappers to normal block flow lets the paginator fragment the
+   * document in document order, so the footer is genuinely last.
+   */
+  .print-flow {
+    display: block !important;
+  }
+  .print-flow > * {
+    flex: none !important;
+    width: auto !important;
+  }
+
   .shadow-card {
     box-shadow: none !important;
   }

@@ -137,7 +137,7 @@ export default function Page() {
   }
 
   return (
-    <div className="canvas-gradient flex min-h-screen flex-col text-ink">
+    <div className="print-flow canvas-gradient flex min-h-screen flex-col text-ink">
       <a
         href="#workspace-main"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-accent focus:px-4 focus:py-2 focus:text-white"
@@ -168,7 +168,7 @@ export default function Page() {
         }}
       />
 
-      <div className="flex flex-1 flex-col lg:flex-row">
+      <div className="print-flow flex flex-1 flex-col lg:flex-row">
         <Sidebar
           datasets={datasets}
           activeKey={activeKey}
