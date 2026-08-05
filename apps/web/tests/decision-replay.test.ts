@@ -5,8 +5,8 @@ import { createGraph, setResponse } from '../lib/ai/investigation/graph';
 import type { SemanticMappingProposal } from '../lib/ai/types';
 
 const proposals: SemanticMappingProposal[] = [
-  { name: 'revenue_usd', conceptLabel: 'Revenue', roleHint: 'measure', confidence: 0.98, confirmed: true },
-  { name: 'order_region', conceptLabel: 'Region', roleHint: 'dimension', confidence: 0.95, confirmed: true },
+  { name: 'revenue_usd', conceptLabel: 'Revenue', roleHint: 'measure', confidence: 0.98, needsConfirmation: false, confirmed: true },
+  { name: 'order_region', conceptLabel: 'Region', roleHint: 'dimension', confidence: 0.95, needsConfirmation: false, confirmed: true },
 ];
 
 describe('decision replay (§26)', () => {
