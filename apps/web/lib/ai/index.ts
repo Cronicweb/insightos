@@ -10,9 +10,11 @@ export * from './grounding';
 export * from './prompts';
 export * from './settings';
 export * from './cache';
+export * from './memory';
 export * from './semantic/model';
 export * from './semantic/cache';
 export * from './investigation/graph';
+export * from './analyst';
 
 import type { AIProvider } from './provider';
 import { resolveProvider } from './provider';
