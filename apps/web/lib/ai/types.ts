@@ -44,6 +44,14 @@ export type ReasoningSource =
   | "Statistical Tests";
 
 /**
+ * Grounding mode recorded on every AI Trace.
+ * - "Strict" / "Relaxed": normal provider answers under the grounding guard.
+ * - "Refused": AI Operating Policy (§28) refused an out-of-scope/injection request LOCALLY, no provider call.
+ * - "Fallback": deterministic fallback (§22) produced the answer without AI narration.
+ */
+export type GroundingMode = "Strict" | "Relaxed" | "Refused" | "Fallback";
+
+/**
  * AI Trace — reasoning transparency attached to every AI answer (§13.11).
  * Populated by the service facade from actual cited sourcePaths and resolved settings;
  * never hand-typed by a prompt or component.
@@ -52,7 +60,7 @@ export interface AITrace {
   reasoningSources: ReasoningSource[];
   provider: string; // e.g. "Groq"
   model: string; // e.g. "qwen-3-32b"
-  grounding: "Strict" | "Relaxed";
+  grounding: GroundingMode;
   temperature: number;
   promptVersion: string;
   cached?: boolean;
