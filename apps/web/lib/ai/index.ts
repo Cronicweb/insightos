@@ -6,6 +6,8 @@
 // not to providers/parsers/caches directly.
 // POLICY (§28): every question is classified LOCALLY before any provider call; unsupported and
 // injection attempts are refused without an API call.
+// PROMPTS (§31): buildPrompt (prompts/builder) is the ONLY prompt assembler; the internal system
+// prompt is owned by InsightOS and never surfaced.
 
 export * from './types';
 export * from './provider';
@@ -18,6 +20,9 @@ export * from './cache';
 export * from './memory';
 export * from './policy';
 export * from './assistant';
+export * from './prompts/system';
+export * from './prompts/registry';
+export * from './prompts/builder';
 export * from './semantic/model';
 export * from './semantic/cache';
 export * from './investigation/graph';
