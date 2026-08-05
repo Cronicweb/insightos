@@ -42,8 +42,9 @@ export function SemanticReviewDialog({
           <div>
             <CardTitle id="semantic-review-title">Review semantic mappings</CardTitle>
             <CardSubtitle>
-              These columns were mapped with lower confidence. Confirm, edit, or reject before
-              analytics run. Rejecting falls back to deterministic inference.
+              For each Original Column below, review the Suggested Concept, its Role, and the
+              Confidence score. Confirm, edit, or reject before analytics run. Rejecting falls back
+              to deterministic inference.
             </CardSubtitle>
           </div>
           <Badge tone="warning">{lowConf.length} to review</Badge>
@@ -53,15 +54,22 @@ export function SemanticReviewDialog({
             <div key={p.name} className="rounded-xl border border-line p-3">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold">
-                    {p.name}
-                    <span className="ml-2 font-normal text-muted">
-                      → {p.conceptLabel ?? p.aliasOf ?? '—'}
-                    </span>
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted">
-                    Confidence: {(p.confidence * 100).toFixed(0)}%
-                  </p>
+                  <dl className="flex flex-wrap items-baseline gap-x-4 gap-y-0.5">
+                    <div className="min-w-0">
+                      <dt className="text-2xs uppercase tracking-wide text-muted/70">Original Column</dt>
+                      <dd className="truncate text-sm font-semibold">{p.name}</dd>
+                    </div>
+                    <div className="min-w-0">
+                      <dt className="text-2xs uppercase tracking-wide text-muted/70">Suggested Concept</dt>
+                      <dd className="truncate text-sm font-medium text-muted">
+                        {p.conceptLabel ?? p.aliasOf ?? '—'}
+                      </dd>
+                    </div>
+                    <div className="min-w-0">
+                      <dt className="text-2xs uppercase tracking-wide text-muted/70">Confidence</dt>
+                      <dd className="text-sm font-medium">{(p.confidence * 100).toFixed(0)}%</dd>
+                    </div>
+                  </dl>
                 </div>
                 <Badge tone={p.confirmed === false ? 'negative' : p.confirmed ? 'positive' : 'neutral'}>
                   {p.confirmed === false ? 'Rejected' : p.confirmed ? 'Accepted' : 'Pending'}
@@ -70,7 +78,7 @@ export function SemanticReviewDialog({
 
               <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <label className="text-xs text-muted">
-                  Concept label
+                  Suggested Concept
                   <input
                     className="mt-1 min-h-[44px] w-full rounded-lg border border-line bg-surface px-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50"
                     value={p.conceptLabel ?? ''}

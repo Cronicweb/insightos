@@ -118,3 +118,75 @@ export class GroqProvider implements AIProvider {
 export function createGroqProvider(settings: AISettings): AIProvider {
   return new GroqProvider(settings);
 }
+
+
+// ----------------------------------------------------------------------------
+// Connection test (browser-only). Validates the API key + model against Groq
+// WITHOUT sending any dataset content. The key is used solely for the request
+// Authorization header and is NEVER logged, stored elsewhere, or returned.
+// Reuses the same GROQ_ENDPOINT/base as chat(); no new provider abstraction.
+// ----------------------------------------------------------------------------
+
+export type ConnectionState =
+  | 'not_connected'
+  | 'connecting'
+  | 'connected'
+  | 'invalid_key'
+  | 'invalid_model'
+  | 'unreachable'
+  | 'network_error';
+
+export interface ConnectionResult {
+  state: ConnectionState;
+  provider: string;
+  model: string;
+  latencyMs?: number;
+  validatedAt?: number;
+  detail?: string;
+}
+
+const GROQ_MODELS_ENDPOINT = 'https://api.groq.com/openai/v1/models';
+
+/**
+ * Test connectivity for the given settings. Returns a mapped ConnectionState.
+ * - Verifies auth via the models endpoint (401/403 -> invalid_key).
+ * - Confirms the configured model id exists (missing -> invalid_model).
+ * - Any thrown fetch error -> network_error; non-2xx server -> unreachable.
+ */
+export async function testGroqConnection(settings: AISettings): Promise<ConnectionResult> {
+  const provider = 'groq';
+  const model = settings.model;
+  if (!settings.apiKey) {
+    return { state: 'invalid_key', provider, model, detail: 'No API key provided' };
+  }
+  const started = Date.now();
+  let res: Response;
+  try {
+    res = await fetch(GROQ_MODELS_ENDPOINT, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${settings.apiKey}` },
+    });
+  } catch {
+    return { state: 'network_error', provider, model, detail: 'Request failed to send' };
+  }
+  const latencyMs = Date.now() - started;
+
+  if (res.status === 401 || res.status === 403) {
+    return { state: 'invalid_key', provider, model, latencyMs, detail: 'Authentication failed' };
+  }
+  if (!res.ok) {
+    return { state: 'unreachable', provider, model, latencyMs, detail: `Provider returned ${res.status}` };
+  }
+
+  // Confirm the selected model is available to this key.
+  try {
+    const data = (await res.json()) as { data?: Array<{ id?: string }> };
+    const ids = new Set((data.data ?? []).map((m) => m.id).filter(Boolean) as string[]);
+    if (ids.size > 0 && !ids.has(model)) {
+      return { state: 'invalid_model', provider, model, latencyMs, detail: 'Selected model not available' };
+    }
+  } catch {
+    // If the list can't be parsed, auth still succeeded: treat as connected.
+  }
+  return { state: 'connected', provider, model, latencyMs, validatedAt: Date.now() };
+}
