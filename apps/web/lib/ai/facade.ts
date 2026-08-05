@@ -10,7 +10,6 @@ import {
   createGraph,
   addNode,
   setResponse,
-  compareNodes,
   exportGraph,
   type InvestigationGraph,
   type InvestigationResponse,
@@ -25,8 +24,6 @@ import { buildSemanticModel, draftToProposals, requiresReview, type SemanticMode
 import { validateResponse, deterministicFallback } from './validation';
 import {
   compareNodesDetailed,
-  compareSemantic,
-  comparePeriods,
   compareSql,
   compareRecommendations,
   type CompareResult,
@@ -193,6 +190,3 @@ export class AnalystFacade {
     return planReplay(serialized, model);
   }
 }
-
-// Re-export comparison helpers not otherwise reached through the class API surface.
-export { compareSemantic, comparePeriods, compareNodes };
