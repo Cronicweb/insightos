@@ -3,6 +3,9 @@
 > **Status:** Design specification (no runtime behavior change).
 > **Scope:** Defines the additive AI layer for InsightOS. This document is the contract that all
 > subsequent AI code must satisfy. It is written to be reviewed and approved *before* implementation.
+>
+> **Amendments:** §13 (Addendum v2) extends this specification with ten additional architectural
+> requirements and the AI Trace feature. Where §13 refines an earlier section, §13 governs.
 
 ---
 
@@ -200,7 +203,7 @@ export interface SemanticModelDraft {
     conceptLabel?: string;             // e.g. "Transaction Amount"
     roleHint?: "measure" | "dimension" | "time" | "identifier";
     aliasOf?: string;                  // canonical concept, e.g. "Revenue"
-    confidence: number;
+    confidence: number;                // REQUIRED — see §13.5
   }>;
 }
 ```
@@ -231,7 +234,7 @@ upload → deterministic profiler → [AI Semantic Parser (metadata-only, option
 ## 5. AI Context Builder (`apps/web/lib/ai/context.ts`)
 
 A pure function that assembles the minimal grounded payload for a given AI task from an `Analysis`
-object. It **selects and trims**; it never invents.
+object. It **selects and trims**; it never invents. See §13.1 for the mandatory single-entry-point rule.
 
 ```ts
 export interface GroundedContext {
@@ -275,6 +278,7 @@ export interface GroundedAnswer {
   nextSteps: string[];
   grounded: boolean;                   // false → guard caught an ungrounded claim
   provider: string;
+  trace?: AITrace;                     // §13.11 — reasoning sources + provider metadata
 }
 ```
 
@@ -284,7 +288,7 @@ export interface GroundedAnswer {
 
 - Prompts are **versioned, static templates** kept out of component code, one file per task
   (`semantic-parse.ts`, `explain-insight.ts`, `answer-question.ts`, `rewrite-report.ts`,
-  `generate-sql.ts`).
+  `generate-sql.ts`). See §13.2 for the mandatory per-module split and version stamping.
 - Every template begins with the same **system preamble** stating the prime directive: *use only
   provided context; never invent numbers, KPIs, or recommendations; cite sources; if unknown, say so.*
 - Templates request **structured JSON** for machine-consumed tasks (semantic parse, SQL gen) and
@@ -359,18 +363,164 @@ All flags live in `AISettings`, persisted in browser `localStorage`, all default
 ## 12. Implementation roadmap (post-approval)
 
 1. **Phase 0 — Scaffolding:** `ai/provider.ts` interface, `providers/groq.ts` default,
-   `ai/context.ts`, `ai/grounding.ts`, `ai/prompts/*`, `semantic/model.ts` types. All inert.
+   `ai/context.ts`, `ai/grounding.ts`, `ai/prompts/*`, `semantic/model.ts` types. All inert. ✅
 2. **Phase 1 — AI Settings page:** provider/model/temperature/grounding/rewrite/API-key UI,
    `localStorage` persistence, master flag. All AI off by default.
-3. **Phase 2 — Semantic layer:** metadata-only parser wired as an advisory, flagged pre-step.
+3. **Phase 2 — Semantic layer:** metadata-only parser wired as an advisory, flagged pre-step,
+   with confidence scores and low-confidence confirmation (§13.5).
 4. **Phase 3 — Insight Analyst:** grounded explain/Q&A panel (Answer/Evidence/Confidence/Next Steps)
-   + NL→SQL executed locally in DuckDB-WASM.
+   + conversation memory (§13.3) + AI Trace (§13.11) + NL→SQL executed locally in DuckDB-WASM.
 5. **Phase 4 — Docs & accessibility:** README sections, ARIA/keyboard/44px audit on new components.
 
 Each phase is a separate, reviewable, CI-green PR that upholds the checklist in §11.
 
 ---
 
-*This document governs all AI code in InsightOS. Any change to the grounding contract (§2), the
-semantic parser boundary (§4), or the determinism guarantees (§0, §9–§11) requires an explicit
-architecture review and an update to this file in the same PR.*
+## 13. Architecture Addendum v2 (authoritative)
+
+This addendum incorporates ten additional architectural requirements plus the **AI Trace** feature.
+It is binding on all AI implementation from Phase 1 onward. Where it refines an earlier section,
+this addendum governs.
+
+### 13.1 Single AI Context Builder — the only path to a provider
+`AIContextBuilder` is the **sole** assembler of grounded context and the **sole** caller of any
+`AIProvider`. **No UI component may import or call a provider directly.** Components call a thin
+`useInsightAnalyst()` / service facade that internally: (a) builds context via `AIContextBuilder`,
+(b) applies budgeting/caching (§13.4), (c) invokes the resolved provider, (d) runs the grounding
+guard, (e) attaches the AI Trace (§13.11). Enforcement: an ESLint boundary rule (or a documented
+review gate) forbids importing `ai/providers/*` outside `ai/`.
+
+### 13.2 Prompt Registry — versioned, per-task modules
+Prompts move into `apps/web/lib/ai/prompts/` as **one module per task**: `semantic.ts`, `analyst.ts`,
+`explain.ts`, `sql.ts`, `rewrite.ts`. Each exports a template plus a `version` string and a shared
+`PREAMBLE`. **Prompts must never be hardcoded inside providers or UI components.** Providers receive
+already-composed `{system, user}` payloads from the registry. (Phase 0's single `prompts.ts` will be
+split into this directory in Phase 3; the barrel keeps the public import path stable.)
+
+### 13.3 Conversation Memory — session-scoped
+Insight Analyst maintains a **session-scoped** (in-memory, tab-lifetime) conversation history so
+follow-ups like *"Why?"*, *"Show evidence."*, *"Compare with last month."* resolve against prior
+turns without rebuilding context from scratch.
+
+```ts
+export interface ConversationTurn {
+  role: "user" | "analyst";
+  text: string;
+  focus?: ContextFocus;
+  evidenceRefs?: string[];      // sourcePaths cited that turn
+  ts: number;
+}
+export interface ConversationSession {
+  id: string;                   // per analysis/tab
+  analysisKey: string;
+  turns: ConversationTurn[];    // capped (e.g. last N) to bound tokens
+}
+```
+
+- Memory is **never persisted to disk** and dies with the tab (consistent with the privacy model).
+- Only prior *turns and their cited sourcePaths* are carried forward — never raw data.
+- A `contextDelta` strategy re-uses the previous `GroundedContext` and appends only what a follow-up
+  needs, avoiding full rebuilds.
+
+### 13.4 AI Cost Control — budgeting, estimation, caching
+Before any provider call the facade must:
+- **Estimate tokens** for the composed prompt (`estimateTokens(payload)` heuristic) and compare
+  against a per-request and per-session **budget**; over-budget requests are trimmed (smaller
+  context scope) or blocked with a clear message — never silently sent.
+- **Cache responses** (optional, default on) in an in-memory LRU keyed by
+  `hash(analysisKey + focus + promptVersion + question + model + temperature)`. Repeated
+  explanations reuse the previous `GroundedAnswer`. Cache is tab-scoped and cleared on new upload.
+
+```ts
+export interface AIBudget { perRequestTokens: number; perSessionTokens: number; }
+export function estimateTokens(payload: unknown): number;   // heuristic, no network
+export interface AICacheKeyParts { analysisHash: string; focusKey: string; promptVersion: string;
+  question?: string; model: string; temperature: number; }
+```
+
+### 13.5 Semantic Confidence — confirmation gate for low-confidence mappings
+The Semantic Parser returns a `confidence` (0–1) for **every** inferred concept (already required in
+§4.3). Mappings below a threshold (default `0.7`) are marked `needsConfirmation` and are **excluded
+from the active semantic model until the user explicitly confirms** them in the UI. High-confidence
+mappings apply automatically but remain advisory (§4, Rule S1). Unconfirmed/declined mappings fall
+back to deterministic role/domain inference.
+
+```ts
+export interface SemanticMappingProposal {
+  name: string; conceptLabel?: string; aliasOf?: string;
+  roleHint?: "measure" | "dimension" | "time" | "identifier";
+  confidence: number; needsConfirmation: boolean; confirmed?: boolean;
+}
+```
+
+### 13.6 Explainability — every answer exposes its basis
+Every `GroundedAnswer` must expose, via its `trace` (§13.11) and `evidence`:
+- **Source deterministic objects used** (sourcePaths → artifacts)
+- **Confidence** (level + basis, aligned with governance caps)
+- **Supporting evidence** (the `GroundedFact[]`)
+- **SQL** (when applicable, e.g. NL→SQL answers)
+- **Statistical methods referenced** (e.g. Welch t-test, Poisson, BH-FDR — read from the cited
+  root-cause/anomaly artifacts, never invented).
+
+### 13.7 Extensibility — vendor-agnostic by construction
+Future providers (OpenAI, Gemini, Claude, Ollama) are added **only** by implementing `AIProvider`
+and registering a factory in `registry.ts`. **No analytics or UI code changes** to add a provider.
+The registry is the single extension point; consumers depend on the interface, never a concrete class.
+
+### 13.8 Performance — Web Workers for heavy work
+The main thread must stay responsive. **Heavy AI preprocessing, semantic-parse payload assembly,
+and DuckDB operations run in Web Workers** where appropriate (DuckDB-WASM already runs in a worker;
+§13 extends this to metadata sampling and large context assembly). Provider network calls are async
+and non-blocking; the UI shows progress and never freezes.
+
+### 13.9 Privacy — metadata-only egress (hard rule)
+Only **metadata** may ever leave the browser to an external provider: column names, inferred types,
+**masked** sample values, and summary statistics. **Entire datasets and raw PII must never be
+transmitted.** This is enforced at the type level (`SemanticParseInput`, `GroundedContext` carry no
+raw rows) and re-checked by an egress assertion before any `fetch` to a provider. Sample values are
+always drawn *after* the privacy layer masks sensitive fields.
+
+### 13.10 Documentation — this doc is authoritative
+`docs/ai-architecture.md` is the single source of truth for the AI layer. **Any architectural
+change must update this document in the same PR, before or alongside the code change.** Implementation
+that diverges from this spec is a bug in the code, not the doc.
+
+### 13.11 AI Trace — reasoning transparency (ship before any AI chat)
+Every AI answer carries an **AI Trace**: a small, expandable section exposing which deterministic
+engines grounded the answer and the exact provider settings used. This ships as part of the answer
+contract so transparency exists from the very first AI feature.
+
+```ts
+export type ReasoningSource =
+  | "Semantic Model" | "Root Cause Analysis" | "KPI Engine"
+  | "Recommendation Engine" | "SQL Query" | "Statistical Tests";
+
+export interface AITrace {
+  reasoningSources: ReasoningSource[];   // ticked sources actually used to ground the answer
+  provider: string;                      // e.g. "Groq"
+  model: string;                         // e.g. "qwen-3-32b"
+  grounding: "Strict" | "Relaxed";       // from strictGrounding
+  temperature: number;                   // e.g. 0.2
+  promptVersion: string;                 // registry version stamp
+  cached?: boolean;                      // served from §13.4 cache
+  estimatedTokens?: number;              // from §13.4 estimator
+}
+```
+
+**UI:** rendered as a collapsed "Reasoning Source" disclosure under each answer, listing the ticked
+engines and a compact provider/model/grounding/temperature summary. Example:
+
+```
+▸ Reasoning Source
+  ✓ Semantic Model      ✓ Root Cause Analysis   ✓ KPI Engine
+  ✓ Recommendation Eng. ✓ SQL Query             ✓ Statistical Tests
+  Provider: Groq   Model: qwen-3-32b   Grounding: Strict   Temperature: 0.2
+```
+
+The trace is populated by the service facade (§13.1) from the actual sourcePaths cited and the
+resolved `AISettings` — never hand-typed by a prompt or component.
+
+### 13.12 Addendum backward-compatibility
+All §13 additions are additive and flagged. With `enabled=false`, none of conversation memory,
+budgeting, caching, semantic confirmation, or AI Trace runs. Deterministic analytics, demo mode,
+and GitHub Pages deployment remain unchanged and regression-free.
