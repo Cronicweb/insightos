@@ -153,8 +153,11 @@ export function Kbd({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function Skeleton({ className }: { className?: string }) {
-  return <div className={cn('animate-pulse rounded-lg bg-elevated', className)} />;
+export function Skeleton({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn('animate-pulse rounded-lg bg-elevated', className)} {...props} />;
 }
 
 export function SectionLabel({ children }: { children: React.ReactNode }) {

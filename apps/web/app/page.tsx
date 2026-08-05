@@ -473,13 +473,14 @@ function DatasetHeader({
 
 function LoadingState() {
   return (
-    <div className="space-y-4">
-      <Skeleton className="h-28 w-full" />
-      <Skeleton className="h-80 w-full" />
+    <div className="space-y-4" role="status" aria-live="polite" aria-busy="true">
+      <span className="sr-only">Loading analysis…</span>
+      <Skeleton className="h-28 w-full" aria-hidden />
+      <Skeleton className="h-80 w-full" aria-hidden />
       <div className="grid gap-4 xl:grid-cols-3">
-        <Skeleton className="h-64 w-full" />
-        <Skeleton className="h-64 w-full" />
-        <Skeleton className="h-64 w-full" />
+        <Skeleton className="h-64 w-full" aria-hidden />
+        <Skeleton className="h-64 w-full" aria-hidden />
+        <Skeleton className="h-64 w-full" aria-hidden />
       </div>
     </div>
   );
