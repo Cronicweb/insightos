@@ -53,10 +53,10 @@ export function generateObservations(summary: DeterministicSummary): Suggestion[
     }
   }
   for (const a of summary.anomalies ?? []) {
-    out.push({ id: uid('obs'), kind: 'observation', title: `${a.label} is unusual`, focus: { kind: 'anomaly' }, sourcePath: a.sourcePath, rationale: 'Flagged by deterministic anomaly detection.' });
+    out.push({ id: uid('obs'), kind: 'observation', title: `${a.label} is unusual`, focus: { kind: 'anomaly', id: a.id }, sourcePath: a.sourcePath, rationale: 'Flagged by deterministic anomaly detection.' });
   }
   for (const r of (summary.recommendations ?? []).filter((r) => (r.confidence ?? 0) >= 0.7)) {
-    out.push({ id: uid('obs'), kind: 'observation', title: r.label, focus: { kind: 'recommendation' }, sourcePath: r.sourcePath, rationale: 'High-confidence deterministic recommendation.' });
+    out.push({ id: uid('obs'), kind: 'observation', title: r.label, focus: { kind: 'recommendation', id: r.id }, sourcePath: r.sourcePath, rationale: 'High-confidence deterministic recommendation.' });
   }
   // Rank: KPI movements first (by magnitude), then anomalies, then recommendations.
   return out.slice(0, 6);
@@ -67,11 +67,11 @@ export function generateSuggestions(summary: DeterministicSummary): Suggestion[]
   const s: Suggestion[] = [];
   const topKpi = (summary.kpis ?? []).find((k) => k.deltaPct !== undefined);
   if (topKpi) s.push({ id: uid('q'), kind: 'question', title: `Why did ${topKpi.label} change?`, focus: { kind: 'root_cause', index: 0 }, sourcePath: topKpi.sourcePath });
-  s.push({ id: uid('q'), kind: 'question', title: 'Find hidden anomalies', focus: { kind: 'anomaly' } });
+  s.push({ id: uid('q'), kind: 'question', title: 'Find hidden anomalies', focus: { kind: 'anomaly', id: 'top' } });
   if ((summary.dimensions ?? []).length > 1) s.push({ id: uid('q'), kind: 'question', title: `Compare ${summary.dimensions![0]} vs ${summary.dimensions![1]}`, focus: { kind: 'report' } });
   s.push({ id: uid('q'), kind: 'question', title: 'Find strongest drivers', focus: { kind: 'root_cause', index: 0 } });
   if ((summary.qualityIssues ?? []).length) s.push({ id: uid('q'), kind: 'question', title: 'Explain quality issues', focus: { kind: 'report' } });
-  if ((summary.recommendations ?? []).length) s.push({ id: uid('q'), kind: 'question', title: 'Inspect recommendations', focus: { kind: 'recommendation' } });
+  if ((summary.recommendations ?? []).length) s.push({ id: uid('q'), kind: 'question', title: 'Inspect recommendations', focus: { kind: 'recommendation', id: 'top' } });
   s.push({ id: uid('q'), kind: 'question', title: 'Show confidence', focus: { kind: 'report' } });
   return s;
 }
@@ -91,7 +91,7 @@ export function generateTemplates(summary: DeterministicSummary): InvestigationT
       steps: [
         { question: 'Why did the primary KPI change?', focus: { kind: 'root_cause', index: 0 } },
         { question: 'Which dimensions contributed most?', focus: { kind: 'root_cause', index: 0 } },
-        { question: 'Is the movement statistically significant?', focus: { kind: 'anomaly' } },
+        { question: 'Is the movement statistically significant?', focus: { kind: 'anomaly', id: 'top' } },
       ],
     });
   templates.push({
@@ -116,7 +116,7 @@ export function generateTemplates(summary: DeterministicSummary): InvestigationT
       id: 'tpl-regional', name: 'Regional Investigation',
       description: 'Compare performance across regions/dimensions.',
       steps: [
-        { question: 'Which region is most unusual?', focus: { kind: 'anomaly' } },
+        { question: 'Which region is most unusual?', focus: { kind: 'anomaly', id: 'top' } },
         { question: 'Why is that region different?', focus: { kind: 'root_cause', index: 0 } },
       ],
     });
@@ -124,8 +124,8 @@ export function generateTemplates(summary: DeterministicSummary): InvestigationT
     id: 'tpl-forecast', name: 'Forecast Investigation',
     description: 'Project the trend and stress-test assumptions.',
     steps: [
-      { question: 'What is the projected trend?', focus: { kind: 'forecast' } },
-      { question: 'What could change the forecast?', focus: { kind: 'forecast' } },
+      { question: 'What is the projected trend?', focus: { kind: 'forecast', metric: 'primary' } },
+      { question: 'What could change the forecast?', focus: { kind: 'forecast', metric: 'primary' } },
     ],
   });
   if (hasReco)
@@ -133,8 +133,8 @@ export function generateTemplates(summary: DeterministicSummary): InvestigationT
       id: 'tpl-actions', name: 'Action Investigation',
       description: 'Rank recommendations by confidence and expected impact.',
       steps: [
-        { question: 'Which recommendation has the highest confidence?', focus: { kind: 'recommendation' } },
-        { question: 'What should management investigate first?', focus: { kind: 'recommendation' } },
+        { question: 'Which recommendation has the highest confidence?', focus: { kind: 'recommendation', id: 'top' } },
+        { question: 'What should management investigate first?', focus: { kind: 'recommendation', id: 'top' } },
       ],
     });
   return templates;
