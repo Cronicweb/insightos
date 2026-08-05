@@ -192,6 +192,12 @@ export interface AISettings {
   strictGrounding: boolean;
   enableExecutiveRewrite: boolean;
   enableSemanticParser: boolean;
+  /**
+   * Strict Investigation Mode (§28.8). When true (default), Insight Analyst answers ONLY in-scope
+   * questions (uploaded data / current analysis / InsightOS); unrelated requests are refused
+   * LOCALLY with no provider call. Recommended on.
+   */
+  strictInvestigationMode: boolean;
   /** Browser-only. NEVER committed or bundled. */
   apiKey?: string;
 }
@@ -212,6 +218,7 @@ export const DEFAULT_AI_SETTINGS: AISettings = {
   strictGrounding: true,
   enableExecutiveRewrite: false,
   enableSemanticParser: false,
+  strictInvestigationMode: true,
 };
 
 /** Default budgets (§13.4). Conservative to keep the browser responsive. */
