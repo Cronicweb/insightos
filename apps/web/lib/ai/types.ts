@@ -93,6 +93,13 @@ export interface SemanticParseInput {
   }>;
 }
 
+/**
+ * Privacy-filtered, metadata-only description of an uploaded dataset (§25 extension hooks).
+ * Structurally identical to SemanticParseInput — the input a pluggable SemanticParser receives.
+ * NEVER contains full rows; only masked samples and summary statistics.
+ */
+export type DatasetMetadata = SemanticParseInput;
+
 /** Advisory output of the Semantic Parser. Never authoritative over the engine. */
 export interface SemanticModelDraft {
   domainHint?: string;
@@ -182,6 +189,14 @@ export interface GeneratedSql {
   sql: string;
   notes: string[];
 }
+
+/**
+ * Investigation response types (§16) live with the Investigation Graph model.
+ * Re-exported here so policy/validation/tests can import the canonical definition
+ * from the shared types barrel without reaching into the graph module directly.
+ * These are `export type` (type-only) — no runtime/circular dependency is introduced.
+ */
+export type { InvestigationResponse, AITraceExtended } from './investigation/graph';
 
 /** User-configurable AI settings. Persisted in browser localStorage only. */
 export interface AISettings {
