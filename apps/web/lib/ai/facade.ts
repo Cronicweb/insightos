@@ -2,8 +2,9 @@
 // No UI component coordinates providers, semantic parsing, grounding, caching, SQL, or explanation
 // logic directly. This facade owns the full lifecycle and is safe when AI is disabled.
 //
-// Lifecycle: Dataset → Semantic Cache → Context → Provider → Grounding Validation
-//            → Response Validation → Investigation Graph → Answer Cache → UI
+// Lifecycle: Question → LOCAL Intent Classifier (§28) → [refuse if unsupported, NO API CALL]
+//            → Semantic Cache → Context → Provider → Grounding + Response Validation
+//            → Investigation Graph → Answer Cache → UI
 
 import { ask as facadeAsk } from './analyst';
 import {
@@ -29,6 +30,7 @@ import {
   type CompareResult,
 } from './compare';
 import { planReplay, serializeInvestigation, type SerializedInvestigation } from './replay';
+import { classifyIntent, refusalResponse, SYSTEM_IDENTITY, type Classification } from './policy';
 import { loadAISettings } from './settings';
 import type { ContextFocus, GroundedContext, SemanticModelDraft, SemanticMappingProposal } from './types';
 
@@ -54,11 +56,20 @@ export class AnalystFacade {
 
   constructor(private readonly analysisKey: string) {}
 
+  /** System identity string (§28.7). */
+  identity(): string {
+    return SYSTEM_IDENTITY;
+  }
+
+  /** Classify a question locally (§28.4). Never calls a provider. */
+  classify(question: string): Classification {
+    const settings = loadAISettings();
+    const strict = settings.strictInvestigationMode ?? true;
+    return classifyIntent(question, strict);
+  }
+
   /**
    * Ensure a semantic model exists for this dataset WITHOUT re-parsing (§19 parse-once).
-   * If cached, returns it directly. Otherwise turns an advisory draft into proposals and reports
-   * whether user review is required (confidence gate §14.4). The caller applies review, then calls
-   * commitSemanticModel().
    */
   ensureSemanticModel(draft?: SemanticModelDraft): SemanticReadyState {
     const cached = getCachedSemanticModel(this.analysisKey);
@@ -117,8 +128,11 @@ export class AnalystFacade {
   }
 
   /**
-   * Full ask lifecycle: build/resolve context via the analyst facade (provider + cache + trace),
-   * VALIDATE the response, fall back deterministically on any violation, then attach to the graph node.
+   * Full ask lifecycle. FIRST stage is the LOCAL intent classifier (§28.9): if the question is
+   * UNSUPPORTED or a prompt-injection attempt, return the standard refusal immediately — the AI
+   * provider is NEVER invoked (saves cost/latency, blocks injection). Otherwise: provider + cache
+   * + trace via the analyst facade → VALIDATE (§22) → deterministic fallback on any violation →
+   * attach to the graph node.
    */
   async ask(
     nodeId: string,
@@ -129,6 +143,14 @@ export class AnalystFacade {
     if (!this.graph) throw new Error('No active investigation.');
     const settings = loadAISettings();
 
+    // §28.9 — classify locally BEFORE any provider call.
+    const verdict = this.classify(question);
+    if (!verdict.supported) {
+      const refusal = refusalResponse(context);
+      this.graph = setResponse(this.graph, nodeId, refusal);
+      return refusal;
+    }
+
     let response = await facadeAsk({
       analysisKey: this.analysisKey,
       question,
@@ -138,11 +160,11 @@ export class AnalystFacade {
     });
 
     // §22: validate before rendering; on any violation, use deterministic fallback.
-    const verdict = validateResponse(response, context, {
+    const val = validateResponse(response, context, {
       strict: settings.strictGrounding,
       knownColumns: opts.knownColumns,
     });
-    if (!verdict.ok) {
+    if (!val.ok) {
       response = deterministicFallback(question, context);
     }
 
