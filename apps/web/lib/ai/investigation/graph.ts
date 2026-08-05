@@ -30,6 +30,7 @@ export interface InvestigationNode {
   response?: InvestigationResponse;
   createdAt: number;
   status: 'pending' | 'answered' | 'error';
+  bookmarked?: boolean; // §20 — first-class history highlight
 }
 
 export interface InvestigationGraph {
@@ -133,6 +134,7 @@ export function exportGraph(graph: InvestigationGraph): string {
       question: n.question,
       focus: n.focus,
       status: n.status,
+      bookmarked: n.bookmarked ?? false,
       summary: n.response?.summary,
       evidenceRefs: n.response?.evidence.map((e) => e.sourcePath),
       sql: n.response?.sql?.sql,
