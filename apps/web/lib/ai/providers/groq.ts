@@ -1,0 +1,120 @@
+// InsightOS AI layer — default Groq provider (client-side fetch, no SDK, no server).
+// Implements AIProvider. All prompts are grounded; see docs/ai-architecture.md.
+// The API key is supplied at runtime from browser localStorage and never committed.
+
+import type { AIProvider } from "../provider";
+import { disabledAnswer } from "../provider";
+import { buildGuardedAnswer } from "../grounding";
+import {
+  answerQuestionPrompt,
+  explainInsightPrompt,
+  generateSqlPrompt,
+  rewriteReportPrompt,
+  semanticParsePrompt,
+} from "../prompts";
+import type {
+  AISettings,
+  ExplainRequest,
+  GeneratedSql,
+  GroundedAnswer,
+  QuestionRequest,
+  RewriteRequest,
+  SemanticModelDraft,
+  SemanticParseInput,
+  SqlGenRequest,
+} from "../types";
+
+const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
+
+async function chat(
+  settings: AISettings,
+  system: string,
+  user: string,
+  jsonMode: boolean,
+): Promise<string> {
+  const res = await fetch(GROQ_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${settings.apiKey ?? ""}`,
+    },
+    body: JSON.stringify({
+      model: settings.model,
+      temperature: settings.temperature,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
+      ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
+    }),
+  });
+  if (!res.ok) throw new Error(`Groq request failed: ${res.status}`);
+  const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  return data.choices?.[0]?.message?.content ?? "";
+}
+
+export class GroqProvider implements AIProvider {
+  readonly id = "groq";
+  readonly label = "Groq";
+  constructor(private readonly settings: AISettings) {}
+
+  async semanticUnderstanding(input: SemanticParseInput): Promise<SemanticModelDraft> {
+    const { system, user } = semanticParsePrompt(input);
+    try {
+      const raw = await chat(this.settings, system, user, true);
+      const parsed = JSON.parse(raw) as SemanticModelDraft;
+      return parsed?.columns ? parsed : { columns: [] };
+    } catch {
+      // Advisory only: on any failure, produce an empty draft so the engine's
+      // deterministic role/domain inference remains the source of truth.
+      return { columns: [] };
+    }
+  }
+
+  async explainInsight(request: ExplainRequest): Promise<GroundedAnswer> {
+    const { system, user } = explainInsightPrompt(request);
+    try {
+      const raw = await chat(this.settings, system, user, false);
+      return buildGuardedAnswer(raw, request.context, this.id, this.settings.strictGrounding);
+    } catch {
+      return disabledAnswer(this.id);
+    }
+  }
+
+  async answerQuestion(request: QuestionRequest): Promise<GroundedAnswer> {
+    const { system, user } = answerQuestionPrompt(request);
+    try {
+      const raw = await chat(this.settings, system, user, false);
+      return buildGuardedAnswer(raw, request.context, this.id, this.settings.strictGrounding);
+    } catch {
+      return disabledAnswer(this.id);
+    }
+  }
+
+  async rewriteExecutiveReport(request: RewriteRequest): Promise<string> {
+    const { system, user } = rewriteReportPrompt(request);
+    try {
+      const raw = await chat(this.settings, system, user, false);
+      // Tone-only rewrite; if empty, fall back to the deterministic report text.
+      return raw.trim() || request.reportText;
+    } catch {
+      return request.reportText;
+    }
+  }
+
+  async generateSQL(request: SqlGenRequest): Promise<GeneratedSql> {
+    const { system, user } = generateSqlPrompt(request);
+    try {
+      const raw = await chat(this.settings, system, user, true);
+      const parsed = JSON.parse(raw) as GeneratedSql;
+      return { sql: parsed.sql ?? "", notes: parsed.notes ?? [] };
+    } catch {
+      return { sql: "", notes: ["SQL generation failed"] };
+    }
+  }
+}
+
+/** Factory for the provider registry. */
+export function createGroqProvider(settings: AISettings): AIProvider {
+  return new GroqProvider(settings);
+}
