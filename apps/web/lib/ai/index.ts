@@ -1,20 +1,24 @@
 // InsightOS AI layer — public barrel.
 // Additive, inert unless AISettings.enabled. Consumers depend ONLY on these exports,
-// never on a concrete provider. See docs/ai-architecture.md.
+// never on a concrete provider. See docs/ai-architecture.md (+ phase2-3 appendix).
 
-export * from "./types";
-export * from "./provider";
-export * from "./registry";
-export * from "./context";
-export * from "./grounding";
-export * from "./prompts";
-export * from "./settings";
+export * from './types';
+export * from './provider';
+export * from './registry';
+export * from './context';
+export * from './grounding';
+export * from './prompts';
+export * from './settings';
+export * from './cache';
+export * from './semantic/model';
+export * from './semantic/cache';
+export * from './investigation/graph';
 
-import type { AIProvider } from "./provider";
-import { resolveProvider } from "./provider";
-import { PROVIDER_REGISTRY } from "./registry";
-import { loadAISettings } from "./settings";
-import type { AISettings } from "./types";
+import type { AIProvider } from './provider';
+import { resolveProvider } from './provider';
+import { PROVIDER_REGISTRY } from './registry';
+import { loadAISettings } from './settings';
+import type { AISettings } from './types';
 
 /**
  * Convenience: resolve the active provider from current settings.
