@@ -7,7 +7,7 @@ import {
   SEMANTIC_CONFIRM_THRESHOLD,
   type SemanticModelDraft,
   type SemanticMappingProposal,
-} from './types';
+} from '../types';
 
 export type SemanticRole = 'measure' | 'dimension' | 'time' | 'identifier';
 
