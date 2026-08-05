@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Moon, Sun, Github, PanelLeft } from 'lucide-react';
+import { Moon, Sun, Github, PanelLeft, Settings } from 'lucide-react';
 import { useTheme } from './theme-provider';
 import { cn } from '@/lib/utils';
 import { BrandMark } from '@/components/brand-mark';
@@ -16,7 +16,8 @@ export type WorkspaceTab =
   | 'sql'
   | 'ledger'
   | 'case-study'
-  | 'report';
+  | 'report'
+  | 'analyst';
 
 const TABS: { id: WorkspaceTab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
@@ -29,6 +30,7 @@ const TABS: { id: WorkspaceTab; label: string }[] = [
   { id: 'sql', label: 'SQL' },
   { id: 'report', label: 'Report' },
   { id: 'case-study', label: 'Case Study' },
+  { id: 'analyst', label: 'Insight Analyst' },
 ];
 
 export function TopNav({
@@ -37,12 +39,14 @@ export function TopNav({
   engineVersion,
   onMenu,
   onHome,
+  onSettings,
 }: {
   tab: WorkspaceTab;
   onTabChange: (t: WorkspaceTab) => void;
   engineVersion?: string;
   onMenu: () => void;
   onHome?: () => void;
+  onSettings?: () => void;
 }) {
   const { theme, toggle } = useTheme();
 
@@ -102,6 +106,15 @@ export function TopNav({
             <span className="h-1.5 w-1.5 rounded-full bg-positive" />
             Demo mode &middot; static engine output
           </span>
+          <button
+            type="button"
+            onClick={onSettings}
+            aria-label="AI Settings"
+            title="AI Settings"
+            className="grid h-11 w-11 place-items-center rounded-lg text-muted hover:bg-elevated hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            <Settings className="h-[17px] w-[17px]" aria-hidden />
+          </button>
           <a
             href="https://github.com/Cronicweb/insightos"
             target="_blank"

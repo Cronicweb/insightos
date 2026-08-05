@@ -14,6 +14,7 @@ import {
   X,
   ScrollText,
   BookOpen,
+  Sparkle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { WorkspaceTab } from './top-nav';
@@ -32,6 +33,7 @@ const SECONDARY: { id: WorkspaceTab; label: string; icon: typeof BarChart3 }[] =
   { id: 'governance', label: 'Governance', icon: ShieldCheck },
   { id: 'forecast', label: 'Forecast', icon: TrendingUp },
   { id: 'sql', label: 'SQL console', icon: Terminal },
+  { id: 'analyst', label: 'Insight Analyst', icon: Sparkle },
 ];
 
 /**

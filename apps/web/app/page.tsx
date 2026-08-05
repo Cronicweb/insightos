@@ -26,6 +26,60 @@ import { LandingPage } from '@/components/landing/landing-page';
 import { MobileNav } from '@/components/mobile-nav';
 import { AlertCircle, Download, Printer, Upload } from 'lucide-react';
 import { modeNotice, resolveMode } from '@/lib/mode-copy';
+import { InsightAnalystWorkspace } from '@/components/analyst/insight-analyst-workspace';
+import { SemanticReviewDialog } from '@/components/semantic/semantic-review-dialog';
+import {
+  AnalystFacade,
+  loadAISettings,
+  draftToProposals,
+  requiresReview,
+  type SemanticMappingProposal,
+  type SemanticModelDraft,
+} from '@/lib/ai';
+
+// Route to the additive AI Settings page. basePath-safe for the static export.
+function goToSettings() {
+  if (typeof window === 'undefined') return;
+  const base = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
+  window.location.assign(`${base}/settings/`);
+}
+
+// Wiring-only Semantic Review entry point (§14.4). Reuses the existing SemanticModelDraft shape,
+// draftToProposals + requiresReview, and AnalystFacade.ensureSemanticModel/commitSemanticModel.
+// No new abstractions; the deterministic engine remains authoritative.
+
+/** Build the advisory SemanticModelDraft from the deterministic schema (metadata only, no provider call). */
+function draftFromAnalysis(a: Analysis): SemanticModelDraft {
+  const schema = a.schema;
+  const measures = new Set(schema.measures ?? []);
+  const times = new Set(schema.time_columns ?? []);
+  const ids = new Set([...(schema.identifiers ?? []), ...(schema.primary_key ?? [])]);
+  const columns = (schema.columns ?? []).map((c) => {
+    const roleHint: SemanticModelDraft['columns'][number]['roleHint'] = times.has(c.name)
+      ? 'time'
+      : ids.has(c.name)
+        ? 'identifier'
+        : measures.has(c.name)
+          ? 'measure'
+          : 'dimension';
+    // Confidence from the deterministic profile: a clean, well-typed column is high-confidence;
+    // ambiguous/constant/mostly-missing columns fall below the review threshold so the user confirms.
+    const missingPenalty = Math.min(Math.max(c.missing_pct ?? 0, 0), 100) / 100;
+    let confidence = 0.9 - missingPenalty * 0.5;
+    if (c.is_constant) confidence = Math.min(confidence, 0.4);
+    if ((c.semantic_type ?? '') === '' || c.semantic_type === 'unknown') confidence = Math.min(confidence, 0.55);
+    confidence = Math.max(0.05, Math.min(0.99, confidence));
+    return {
+      name: c.name,
+      conceptLabel: c.name,
+      roleHint,
+      confidence,
+    };
+  });
+  return { domainHint: schema.name, columns };
+}
+
+
 
 export default function Page() {
   const [datasets, setDatasets] = React.useState<DatasetSummary[]>([]);
@@ -43,6 +97,25 @@ export default function Page() {
   // The landing page is the default surface; the workspace mounts once a
   // dataset has been chosen. #workspace deep-links straight into it.
   const [entered, setEntered] = React.useState(false);
+  // Optional AI-gated semantic review, shown between upload and analytics when AI is enabled.
+  const [review, setReview] = React.useState<{ analysisKey: string; proposals: SemanticMappingProposal[] } | null>(null);
+
+  // Entry point for Semantic Review (wiring only). Returns true if a review dialog was opened,
+  // so the caller can defer navigation. When AI is OFF this is a no-op returning false, which
+  // preserves the exact deterministic Upload → Overview behaviour.
+  const beginSemanticReview = React.useCallback((a: Analysis): boolean => {
+    if (!loadAISettings().enabled) return false;
+    const draft = draftFromAnalysis(a);
+    const proposals = draftToProposals(draft);
+    // Evaluate confidence. If nothing needs confirmation, commit silently and continue to Overview.
+    if (!requiresReview(proposals)) {
+      const facade = new AnalystFacade(a.key);
+      facade.ensureSemanticModel(draft); // caches a committed model (no review needed)
+      return false;
+    }
+    setReview({ analysisKey: a.key, proposals });
+    return true;
+  }, []);
 
   React.useEffect(() => {
     if (window.location.hash === '#workspace') setEntered(true);
@@ -126,10 +199,11 @@ export default function Page() {
             setUploaded({ label, analysis: a });
             setAnalysis(a);
             setSelectedKpi(a.scorecard.primary_kpi_id ?? a.scorecard.kpis[0]?.id ?? null);
-            setTab('overview');
             setError(null);
             setLoading(false);
             setEntered(true);
+            // AI ON → maybe Semantic Review; AI OFF → straight to Overview (unchanged behaviour).
+            if (!beginSemanticReview(a)) setTab('overview');
           }}
         />
       </>
@@ -153,6 +227,7 @@ export default function Page() {
           if (window.location.hash) window.history.replaceState(null, '', window.location.pathname);
           setEntered(false);
         }}
+        onSettings={goToSettings}
       />
 
       <UploadDialog
@@ -162,9 +237,10 @@ export default function Page() {
           setUploaded({ label, analysis: a });
           setAnalysis(a);
           setSelectedKpi(a.scorecard.primary_kpi_id ?? a.scorecard.kpis[0]?.id ?? null);
-          setTab('overview');
           setError(null);
           setLoading(false);
+          // AI ON → maybe Semantic Review; AI OFF → straight to Overview (unchanged behaviour).
+          if (!beginSemanticReview(a)) setTab('overview');
         }}
       />
 
@@ -231,6 +307,23 @@ export default function Page() {
           </span>
         </div>
       </footer>
+
+      {review ? (
+        <SemanticReviewDialog
+          proposals={review.proposals}
+          onCancel={() => {
+            setReview(null);
+            setTab('overview');
+          }}
+          onConfirm={(resolved) => {
+            // Reuse the existing semantic model builder + facade cache; no new logic.
+            const facade = new AnalystFacade(review.analysisKey);
+            facade.commitSemanticModel(resolved);
+            setReview(null);
+            setTab('analyst');
+          }}
+        />
+      ) : null}
 
       <MobileNav tab={tab} onTabChange={setTab} />
     </div>
@@ -369,6 +462,20 @@ function Workspace({
       <div className="space-y-4">
         <DatasetHeader analysis={analysis} onTab={onTab} />
         <RecommendationsPanel set={analysis.recommendations} />
+      </div>
+    );
+  }
+
+  if (tab === 'analyst') {
+    const analysisKey = (analysis as { key?: string }).key ?? analysis.dataset ?? 'analysis';
+    return (
+      <div className="space-y-4">
+        <DatasetHeader analysis={analysis} onTab={onTab} />
+        <InsightAnalystWorkspace
+          analysisKey={analysisKey}
+          analysis={analysis as unknown as import('@/lib/ai/context').AnalysisLike}
+          onOpenSettings={goToSettings}
+        />
       </div>
     );
   }
