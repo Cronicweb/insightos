@@ -4,6 +4,8 @@
 //
 // UI RULE (§18): application code should talk to AnalystFacade for AI lifecycle concerns,
 // not to providers/parsers/caches directly.
+// POLICY (§28): every question is classified LOCALLY before any provider call; unsupported and
+// injection attempts are refused without an API call.
 
 export * from './types';
 export * from './provider';
@@ -14,6 +16,8 @@ export * from './prompts';
 export * from './settings';
 export * from './cache';
 export * from './memory';
+export * from './policy';
+export * from './assistant';
 export * from './semantic/model';
 export * from './semantic/cache';
 export * from './investigation/graph';
