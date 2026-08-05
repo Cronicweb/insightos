@@ -1,6 +1,9 @@
 // InsightOS AI layer — public barrel.
 // Additive, inert unless AISettings.enabled. Consumers depend ONLY on these exports,
-// never on a concrete provider. See docs/ai-architecture.md (+ phase2-3 appendix).
+// never on a concrete provider. See docs/ai-architecture*.md.
+//
+// UI RULE (§18): application code should talk to AnalystFacade for AI lifecycle concerns,
+// not to providers/parsers/caches directly.
 
 export * from './types';
 export * from './provider';
@@ -14,7 +17,13 @@ export * from './memory';
 export * from './semantic/model';
 export * from './semantic/cache';
 export * from './investigation/graph';
+export * from './investigation/bookmarks';
 export * from './analyst';
+export * from './validation';
+export * from './compare';
+export * from './replay';
+export * from './hooks';
+export * from './facade';
 
 import type { AIProvider } from './provider';
 import { resolveProvider } from './provider';
