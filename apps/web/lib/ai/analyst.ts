@@ -5,7 +5,6 @@
 
 import { getActiveProvider } from './index';
 import { loadAISettings } from './settings';
-import { PROMPT_VERSION } from './prompts';
 import { cacheKey, estimateTokens, getCachedAnswer, setCachedAnswer, hashString } from './cache';
 import { recordTurn } from './memory';
 import { getCachedSemanticModel } from './semantic/cache';
@@ -19,10 +18,21 @@ import type {
 } from './types';
 import { DEFAULT_AI_BUDGET } from './types';
 
+/**
+ * Prompt-registry version stamp surfaced in the AI Trace (§13.11).
+ * Kept local so the facade never depends on prompts.ts internals; the registry split (§13.2)
+ * can re-export/override this without changing the facade's public behavior.
+ */
+export const ANALYST_PROMPT_VERSION = 'analyst-v1';
+
 /** Map a focus/context to the deterministic engines that ground it (for AI Trace §15.3). */
-export function reasoningSourcesFor(focus: ContextFocus, hasSql: boolean): ReasoningSource[] {
+export function reasoningSourcesFor(
+  focus: ContextFocus,
+  hasSemanticModel: boolean,
+  hasSql: boolean,
+): ReasoningSource[] {
   const s = new Set<ReasoningSource>();
-  if (getCachedSemanticModelSafe()) s.add('Semantic Model');
+  if (hasSemanticModel) s.add('Semantic Model');
   switch (focus.kind) {
     case 'root_cause':
       s.add('Root Cause Analysis');
@@ -45,14 +55,6 @@ export function reasoningSourcesFor(focus: ContextFocus, hasSql: boolean): Reaso
   return Array.from(s);
 }
 
-function getCachedSemanticModelSafe(): ReturnType<typeof getCachedSemanticModel> | undefined {
-  try {
-    return undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 function buildTrace(
   context: GroundedContext,
   settings: AISettings,
@@ -68,8 +70,8 @@ function buildTrace(
     model: settings.model,
     grounding: settings.strictGrounding ? 'Strict' : 'Relaxed',
     temperature: settings.temperature,
-    promptVersion: PROMPT_VERSION,
-    reasoningSources: reasoningSourcesFor(context.focus, hasSql),
+    promptVersion: ANALYST_PROMPT_VERSION,
+    reasoningSources: reasoningSourcesFor(context.focus, Boolean(semantic), hasSql),
     contextSources: context.facts.map((f) => f.sourcePath),
     semanticVersion: semantic?.version,
     analysisHash: hashString(JSON.stringify(context.facts)),
@@ -118,7 +120,7 @@ export async function ask(input: AnalystAskInput): Promise<InvestigationResponse
   const key = cacheKey({
     analysisHash,
     focusKey,
-    promptVersion: PROMPT_VERSION,
+    promptVersion: ANALYST_PROMPT_VERSION,
     question: input.question,
     model: settings.model,
     temperature: settings.temperature,
