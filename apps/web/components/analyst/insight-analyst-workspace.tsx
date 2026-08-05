@@ -163,7 +163,7 @@ export function InsightAnalystWorkspace({
         </Card>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[320px_1fr]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[35fr_65fr]">
         <InvestigationGraphView
           graph={graph}
           selectedId={selectedId}

@@ -40,6 +40,20 @@ describe('AI Operating Policy — local intent classifier (§28)', () => {
     }
   });
 
+  it('classifies change / why questions as supported (Issue 2 regression)', () => {
+    for (const q of [
+      'What changed and why?',
+      'What has changed?',
+      'Explain the change in churn',
+      'What changed and why did it happen?',
+    ]) {
+      const c = classifyIntent(q);
+      expect(c.supported, q).toBe(true);
+      expect(c.intent, q).toBe('ROOT_CAUSE');
+      expect(c.reason, q).toBeUndefined();
+    }
+  });
+
   it('strict mode refuses unmatched questions; relaxed allows as ANALYSIS', () => {
     const q = 'Tell me something interesting';
     expect(classifyIntent(q, true).supported).toBe(false);

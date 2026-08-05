@@ -58,7 +58,7 @@ const OUT_OF_SCOPE: RegExp[] = [
 // In-scope class markers (§28.1). Order matters: first strong match wins.
 const SCOPE_MARKERS: Array<{ intent: IntentClass; re: RegExp }> = [
   { intent: 'SQL', re: /\b(sql|query|select\b|group\s+by|join)\b/i },
-  { intent: 'ROOT_CAUSE', re: /\b(root\s+cause|why\s+did|driver|contribut|caused?)\b/i },
+  { intent: 'ROOT_CAUSE', re: /\b(root\s+cause|why\s+did|why\b|driver|contribut|caused?|what\s+(has\s+)?changed?|changed?\s+and\s+why|explain\s+(the\s+)?change)\b/i },
   { intent: 'FORECAST', re: /\b(forecast|predict|projection|trend|next\s+(quarter|month|period))\b/i },
   { intent: 'RECOMMENDATION', re: /\b(recommend|action|next\s+step|should\s+(we|management))\b/i },
   { intent: 'SEMANTIC_MODEL', re: /\b(semantic|concept|mapping|column\s+meaning|data\s+dictionary)\b/i },

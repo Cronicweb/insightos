@@ -81,7 +81,7 @@ export function TopNav({
 
         <nav
           aria-label="Workspace views"
-          className="no-scrollbar hidden min-w-0 flex-1 items-center justify-center gap-1 overflow-x-auto lg:flex"
+          className="no-scrollbar hidden min-w-0 flex-1 items-center justify-start gap-1 overflow-x-auto lg:flex xl:justify-center"
         >
           {TABS.map((t) => (
             <button

@@ -15,7 +15,9 @@ import {
   type AISettings,
 } from '@/lib/ai';
 import { AVAILABLE_PROVIDERS } from '@/lib/ai/registry';
+import { testGroqConnection, type ConnectionResult, type ConnectionState } from '@/lib/ai/providers/groq';
 import { Card, CardHeader, CardTitle, CardSubtitle, CardBody, Badge } from '@/components/ui/primitives';
+import { Eye, EyeOff, Copy, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const FIELD_LABEL = 'block text-xs font-semibold text-muted mb-1.5';
@@ -72,10 +74,34 @@ function Toggle({
   );
 }
 
+const CONNECTION_LABEL: Record<ConnectionState, string> = {
+  not_connected: 'Not Connected',
+  connecting: 'Connecting…',
+  connected: 'Connected',
+  invalid_key: 'Invalid API Key',
+  invalid_model: 'Invalid Model',
+  unreachable: 'Provider Unreachable',
+  network_error: 'Network Error',
+};
+
+function connectionTone(state: ConnectionState): 'positive' | 'negative' | 'warning' | 'neutral' | 'accent' {
+  if (state === 'connected') return 'positive';
+  if (state === 'connecting') return 'accent';
+  if (state === 'not_connected') return 'neutral';
+  return 'negative';
+}
+
 export function AISettingsPanel() {
   const [settings, setSettings] = React.useState<AISettings>(DEFAULT_AI_SETTINGS);
   const [savedAt, setSavedAt] = React.useState<number | null>(null);
   const [showKey, setShowKey] = React.useState(false);
+  const [copied, setCopied] = React.useState(false);
+  const [conn, setConn] = React.useState<ConnectionResult>({
+    state: 'not_connected',
+    provider: 'groq',
+    model: DEFAULT_AI_SETTINGS.model,
+  });
+  const [testing, setTesting] = React.useState(false);
 
   React.useEffect(() => {
     setSettings(loadAISettings());
@@ -94,6 +120,24 @@ export function AISettingsPanel() {
     clearAISettings();
     setSettings({ ...DEFAULT_AI_SETTINGS });
     setSavedAt(Date.now());
+    setConn({ state: 'not_connected', provider: 'groq', model: DEFAULT_AI_SETTINGS.model });
+  }, []);
+
+  // Test the current provider/key WITHOUT sending any data. Browser-only; the key is never logged.
+  const testConnection = React.useCallback(async () => {
+    setTesting(true);
+    setConn((c) => ({ ...c, state: 'connecting', provider: settings.providerId, model: settings.model }));
+    try {
+      const result = await testGroqConnection(settings);
+      setConn(result);
+    } finally {
+      setTesting(false);
+    }
+  }, [settings]);
+
+  // Any edit to provider/model/key invalidates a prior successful validation.
+  const invalidateConn = React.useCallback(() => {
+    setConn((c) => (c.state === 'not_connected' ? c : { ...c, state: 'not_connected', latencyMs: undefined, validatedAt: undefined }));
   }, []);
 
   const aiOff = !settings.enabled;
@@ -170,7 +214,7 @@ export function AISettingsPanel() {
               className={INPUT}
               value={settings.providerId}
               disabled={aiOff}
-              onChange={(e) => update({ providerId: e.target.value })}
+              onChange={(e) => { update({ providerId: e.target.value }); invalidateConn(); }}
             >
               {AVAILABLE_PROVIDERS.map((p) => (
                 <option key={p.id} value={p.id} disabled={!p.implemented}>
@@ -191,7 +235,7 @@ export function AISettingsPanel() {
               list="ai-model-options"
               value={settings.model}
               disabled={aiOff}
-              onChange={(e) => update({ model: e.target.value })}
+              onChange={(e) => { update({ model: e.target.value }); invalidateConn(); }}
             />
             <datalist id="ai-model-options">
               {GROQ_MODEL_OPTIONS.map((m) => (
@@ -233,24 +277,107 @@ export function AISettingsPanel() {
                 className={INPUT}
                 value={settings.apiKey ?? ''}
                 disabled={aiOff}
-                onChange={(e) => update({ apiKey: e.target.value })}
+                onChange={(e) => { update({ apiKey: e.target.value }); invalidateConn(); }}
               />
               <button
                 type="button"
                 className={cn(
-                  'min-h-[44px] rounded-xl border border-line px-3 text-xs font-medium',
+                  'grid min-h-[44px] w-11 place-items-center rounded-xl border border-line',
                   'focus:outline-none focus:ring-2 focus:ring-accent/50',
                 )}
                 aria-pressed={showKey}
+                aria-label={showKey ? 'Hide API key' : 'Show API key'}
+                title={showKey ? 'Hide API key' : 'Show API key'}
                 disabled={aiOff}
-                onClick={() => setShowKey((s) => !s)}
+                onClick={() => setShowKey((v) => !v)}
               >
-                {showKey ? 'Hide' : 'Show'}
+                {showKey ? <EyeOff className="h-4 w-4" aria-hidden /> : <Eye className="h-4 w-4" aria-hidden />}
+              </button>
+              <button
+                type="button"
+                className={cn(
+                  'grid min-h-[44px] w-11 place-items-center rounded-xl border border-line',
+                  'focus:outline-none focus:ring-2 focus:ring-accent/50',
+                )}
+                aria-label="Copy API key"
+                title="Copy API key"
+                disabled={aiOff || !settings.apiKey}
+                onClick={async () => {
+                  if (!settings.apiKey) return;
+                  try {
+                    await navigator.clipboard.writeText(settings.apiKey);
+                    setCopied(true);
+                    window.setTimeout(() => setCopied(false), 1500);
+                  } catch {
+                    /* clipboard unavailable: no-op, never expose the key elsewhere */
+                  }
+                }}
+              >
+                {copied ? <Check className="h-4 w-4 text-positive" aria-hidden /> : <Copy className="h-4 w-4" aria-hidden />}
               </button>
             </div>
             <p className="mt-1 text-xs text-muted">
               Never committed or uploaded. Cleared when you reset or clear browser storage.
             </p>
+
+            {/* Test Connection + status indicator */}
+            <div className="mt-3 rounded-xl border border-line bg-elevated/40 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={cn(
+                      'h-2 w-2 shrink-0 rounded-full',
+                      conn.state === 'connected'
+                        ? 'bg-positive'
+                        : conn.state === 'connecting'
+                          ? 'bg-accent animate-pulse'
+                          : conn.state === 'not_connected'
+                            ? 'bg-subtle'
+                            : 'bg-negative',
+                    )}
+                    aria-hidden
+                  />
+                  <span className="text-xs font-semibold" aria-live="polite">
+                    {CONNECTION_LABEL[conn.state]}
+                  </span>
+                  <Badge tone={connectionTone(conn.state)}>{conn.state === 'connected' ? 'Ready' : 'Status'}</Badge>
+                </div>
+                <button
+                  type="button"
+                  onClick={testConnection}
+                  disabled={aiOff || testing || !settings.apiKey}
+                  className={cn(
+                    'min-h-[44px] rounded-xl border border-line px-3 text-xs font-medium',
+                    'focus:outline-none focus:ring-2 focus:ring-accent/50 disabled:opacity-60',
+                  )}
+                >
+                  {testing ? 'Testing…' : 'Test Connection'}
+                </button>
+              </div>
+              <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-4">
+                <div className="min-w-0">
+                  <dt className="text-muted/70">Provider</dt>
+                  <dd className="truncate font-medium">{conn.provider}</dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-muted/70">Model</dt>
+                  <dd className="truncate font-medium">{conn.model}</dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-muted/70">Latency</dt>
+                  <dd className="truncate font-medium">{conn.latencyMs != null ? `${conn.latencyMs} ms` : '—'}</dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-muted/70">Last validated</dt>
+                  <dd className="truncate font-medium">
+                    {conn.validatedAt ? new Date(conn.validatedAt).toLocaleTimeString() : '—'}
+                  </dd>
+                </div>
+              </dl>
+              {conn.detail && conn.state !== 'connected' && conn.state !== 'not_connected' ? (
+                <p className="mt-2 text-xs text-negative">{conn.detail}</p>
+              ) : null}
+            </div>
           </div>
         </CardBody>
       </Card>
