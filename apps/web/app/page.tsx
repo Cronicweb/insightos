@@ -26,6 +26,22 @@ import { LandingPage } from '@/components/landing/landing-page';
 import { MobileNav } from '@/components/mobile-nav';
 import { AlertCircle, Download, Printer, Upload } from 'lucide-react';
 import { modeNotice, resolveMode } from '@/lib/mode-copy';
+import { InsightAnalystWorkspace } from '@/components/analyst/insight-analyst-workspace';
+import { SemanticReviewDialog } from '@/components/semantic/semantic-review-dialog';
+import {
+  AnalystFacade,
+  loadAISettings,
+  buildSemanticModel,
+  type SemanticMappingProposal,
+} from '@/lib/ai';
+
+// Route to the additive AI Settings page. basePath-safe for the static export.
+function goToSettings() {
+  if (typeof window === 'undefined') return;
+  const base = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
+  window.location.assign(`${base}/settings/`);
+}
+
 
 export default function Page() {
   const [datasets, setDatasets] = React.useState<DatasetSummary[]>([]);
@@ -43,6 +59,8 @@ export default function Page() {
   // The landing page is the default surface; the workspace mounts once a
   // dataset has been chosen. #workspace deep-links straight into it.
   const [entered, setEntered] = React.useState(false);
+  // Optional AI-gated semantic review, shown between upload and analytics when AI is enabled.
+  const [review, setReview] = React.useState<{ analysisKey: string; proposals: SemanticMappingProposal[] } | null>(null);
 
   React.useEffect(() => {
     if (window.location.hash === '#workspace') setEntered(true);
@@ -153,6 +171,7 @@ export default function Page() {
           if (window.location.hash) window.history.replaceState(null, '', window.location.pathname);
           setEntered(false);
         }}
+        onSettings={goToSettings}
       />
 
       <UploadDialog
@@ -231,6 +250,20 @@ export default function Page() {
           </span>
         </div>
       </footer>
+
+      {review ? (
+        <SemanticReviewDialog
+          proposals={review.proposals}
+          onCancel={() => setReview(null)}
+          onConfirm={(resolved) => {
+            // Reuse the existing semantic model builder + facade cache; no new logic.
+            const facade = new AnalystFacade(review.analysisKey);
+            facade.commitSemanticModel(resolved);
+            setReview(null);
+            setTab('analyst');
+          }}
+        />
+      ) : null}
 
       <MobileNav tab={tab} onTabChange={setTab} />
     </div>
@@ -369,6 +402,20 @@ function Workspace({
       <div className="space-y-4">
         <DatasetHeader analysis={analysis} onTab={onTab} />
         <RecommendationsPanel set={analysis.recommendations} />
+      </div>
+    );
+  }
+
+  if (tab === 'analyst') {
+    const analysisKey = (analysis as { key?: string }).key ?? analysis.dataset ?? 'analysis';
+    return (
+      <div className="space-y-4">
+        <DatasetHeader analysis={analysis} onTab={onTab} />
+        <InsightAnalystWorkspace
+          analysisKey={analysisKey}
+          analysis={analysis as unknown as import('@/lib/ai/context').AnalysisLike}
+          onOpenSettings={goToSettings}
+        />
       </div>
     );
   }
