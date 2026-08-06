@@ -17,6 +17,9 @@ import * as React from 'react';
 import {
   AnalystFacade,
   buildContext,
+  contextDelta,
+  recordTurn,
+  clearSession,
   loadAISettings,
   type ContextFocus,
   type InvestigationGraph,
@@ -100,6 +103,9 @@ export function InsightAnalystWorkspace({
     if (!s.enabled) return;
     const facade = new AnalystFacade(analysisKey);
     facadeRef.current = facade;
+    // A NEW investigation resets conversation context (§15.2): follow-ups only inherit
+    // context within the same investigation, never across a fresh start.
+    clearSession(analysisKey);
     const g = facade.startInvestigation({
       analysisKey,
       question: 'What changed and why?',
@@ -114,6 +120,8 @@ export function InsightAnalystWorkspace({
   const ready = readiness.state === 'ready';
 
   // Ask the EXISTING facade to ground a node. buildContext + facade.ask already exist; we only call them.
+  // Follow-up turns (a node that already has an answer, or a non-report focus) reuse the existing
+  // conversation-memory contextDelta so they inherit the current investigation context (§15.2).
   const answer = React.useCallback(
     async (nodeId: string, q: string, focus: ContextFocus) => {
       const facade = facadeRef.current;
@@ -122,23 +130,48 @@ export function InsightAnalystWorkspace({
       if (!ready) return;
       setPendingId(nodeId);
       try {
-        const context = buildContext(analysis, focus);
-        await facade.ask(nodeId, q, context);
+        const base = buildContext(analysis, focus);
+        // Root/report focus starts fresh; any other focus is a follow-up that carries prior
+        // evidence refs forward via the existing contextDelta helper. No new orchestration.
+        const context = focus.kind === 'report' ? base : contextDelta(analysisKey, base, focus);
+        // Record the user turn so subsequent follow-ups can inherit its evidence refs.
+        recordTurn(analysisKey, {
+          role: 'user',
+          text: q,
+          focus,
+          evidenceRefs: context.provenance,
+          ts: Date.now(),
+        });
+        const res = await facade.ask(nodeId, q, context);
+        // Record the analyst turn with the evidence it actually cited, for future contextDeltas.
+        recordTurn(analysisKey, {
+          role: 'analyst',
+          text: res.summary ?? '',
+          focus,
+          evidenceRefs: (res.evidence ?? []).map((e) => e.sourcePath),
+          ts: Date.now(),
+        });
         const g = facade.getGraph();
         if (g) setGraph({ ...g });
       } finally {
         setPendingId(undefined);
       }
     },
-    [analysis, ready],
+    [analysis, analysisKey, ready],
   );
 
+  // Shared submission path used by Ask, Enter and Space — identical to the +Branch flow:
+  // it grounds the SELECTED node with the CURRENTLY TYPED question via facade.ask.
   const ask = React.useCallback(() => {
     const facade = facadeRef.current;
     const g = facade?.getGraph();
     if (!facade || !g || !selectedId) return;
     if (!ready) return;
-    void answer(selectedId, g.nodes[selectedId]?.question ?? question, { kind: 'report' });
+    const q = question.trim();
+    if (!q) return;
+    // Submit the typed question as a first-class question focus (same shape +Branch uses),
+    // so the typed text always reaches the provider — never the node's stale stored question.
+    void answer(selectedId, q, { kind: 'question', text: q });
   }, [answer, selectedId, question, ready]);
 
   const branch = React.useCallback(
@@ -235,6 +268,13 @@ export function InsightAnalystWorkspace({
             <input
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
+              onKeyDown={(e) => {
+                // Enter submits via the SAME path as the Ask button and +Branch.
+                if (e.key === 'Enter' && !e.shiftKey && !askDisabled) {
+                  e.preventDefault();
+                  ask();
+                }
+              }}
               aria-label="Ask a question about this analysis"
               placeholder="Ask about this analysis…"
               disabled={!ready}
@@ -243,6 +283,13 @@ export function InsightAnalystWorkspace({
             <button
               type="button"
               onClick={ask}
+              onKeyDown={(e) => {
+                // Explicit keyboard activation: Space (and Enter) trigger the same submit.
+                if ((e.key === ' ' || e.key === 'Enter') && !askDisabled) {
+                  e.preventDefault();
+                  ask();
+                }
+              }}
               disabled={askDisabled}
               aria-disabled={askDisabled}
               title={!ready ? notReadyReason : undefined}
