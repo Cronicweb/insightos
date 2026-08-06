@@ -13,6 +13,14 @@
 // validated — AI enabled, API key present, a successful provider validation, a model selected,
 // and that model present in the live provider list. Otherwise Ask is disabled with a clear reason,
 // so a question can never fall through to a confusing "Provider = local-policy / No AI Call" state.
+//
+// RUNTIME WIRING FIX: the Ask button must send the QUESTION THE USER TYPED, not the seeded
+// investigation title. Previously ask() forwarded `g.nodes[selectedId].question` (which is always
+// the node's seeded title, e.g. "What changed and why?"), so the `?? question` fallback never
+// fired and the user's live input was silently dropped. We now forward the typed `question`,
+// falling back to the node title only when the input box is blank. The investigation title is
+// preserved as CONTEXT (via buildContext / the node), while the current user question is exactly
+// what was typed. No architecture, engine, or Investigation Graph design change.
 import * as React from 'react';
 import {
   AnalystFacade,
@@ -123,6 +131,18 @@ export function InsightAnalystWorkspace({
       setPendingId(nodeId);
       try {
         const context = buildContext(analysis, focus);
+        // Runtime trace (dev only): prove the USER'S question — not the node title — reaches the
+        // provider. Investigation title stays as context; the current user question is `q`.
+        if (process.env.NODE_ENV !== 'production') {
+          const g0 = facade.getGraph();
+          // eslint-disable-next-line no-console
+          console.debug('[InsightAnalyst] ask()', {
+            userInput: q,
+            activeInvestigationTitle: g0?.nodes[g0.rootId]?.question,
+            selectedNodeTitle: g0?.nodes[nodeId]?.question,
+            questionSentToFacade: q,
+          });
+        }
         await facade.ask(nodeId, q, context);
         const g = facade.getGraph();
         if (g) setGraph({ ...g });
@@ -138,7 +158,11 @@ export function InsightAnalystWorkspace({
     const g = facade?.getGraph();
     if (!facade || !g || !selectedId) return;
     if (!ready) return;
-    void answer(selectedId, g.nodes[selectedId]?.question ?? question, { kind: 'report' });
+    // Send the QUESTION THE USER TYPED. Only fall back to the node's seeded title when the
+    // input box is empty — never let the title shadow a real question the user entered.
+    const typed = question.trim();
+    const q = typed.length > 0 ? typed : g.nodes[selectedId]?.question ?? question;
+    void answer(selectedId, q, { kind: 'report' });
   }, [answer, selectedId, question, ready]);
 
   const branch = React.useCallback(
