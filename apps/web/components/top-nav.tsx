@@ -121,10 +121,6 @@ export function TopNav({
         </nav>
 
         <div className="ml-auto flex shrink-0 items-center gap-0.5 sm:gap-1.5">
-          <span className="mr-1 hidden items-center gap-1.5 whitespace-nowrap rounded-full border border-line px-2.5 py-1 text-2xs text-muted xl:inline-flex">
-            <span className="h-1.5 w-1.5 rounded-full bg-positive" />
-            Demo mode &middot; static engine output
-          </span>
           <button
             type="button"
             onClick={onSettings}

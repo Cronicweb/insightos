@@ -54,6 +54,30 @@ describe('AI Operating Policy — local intent classifier (§28)', () => {
     }
   });
 
+  it('supports real analytical follow-ups typed by the user (Ask regression)', () => {
+    for (const q of [
+      'what to do now',
+      'What should we do now?',
+      'Why?',
+      'How?',
+      'Explain further?',
+      'Tell me more',
+      'Which segment drove the decline?',
+      'What was the impact on margin?',
+      'Show the breakdown by channel',
+    ]) {
+      const c = classifyIntent(q, true);
+      expect(c.supported, q).toBe(true);
+      expect(c.reason, q).toBeUndefined();
+    }
+  });
+
+  it('broadened scope still refuses out-of-scope look-alikes', () => {
+    for (const q of ['Explain quantum physics', 'Tell me a joke', 'Write my resume']) {
+      expect(classifyIntent(q, true).supported, q).toBe(false);
+    }
+  });
+
   it('strict mode refuses unmatched questions; relaxed allows as ANALYSIS', () => {
     const q = 'Tell me something interesting';
     expect(classifyIntent(q, true).supported).toBe(false);
