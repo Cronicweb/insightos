@@ -7,7 +7,7 @@ export interface GroundedFact {
   id: string;
   label: string;
   value: string | number | null;
-  /** Pointer into the Analysis object, e.g. "root_causes[0].root.children[2].contribution_pct". */
+  /** Pointer into the Analysis object, e.g. "root_causes.root.children.contribution_pct". */
   sourcePath: string;
 }
 
@@ -202,7 +202,7 @@ export interface GeneratedSql {
  * Investigation response types (§16) live with the Investigation Graph model.
  * Re-exported here so policy/validation/tests can import the canonical definition
  * from the shared types barrel without reaching into the graph module directly.
- * These are `export type` (type-only) — no runtime/circular dependency is introduced.
+ * These are export type (type-only) — no runtime/circular dependency is introduced.
  */
 export type { InvestigationResponse, AITraceExtended } from './investigation/graph';
 
@@ -225,18 +225,24 @@ export interface AISettings {
   apiKey?: string;
 }
 
-/** Known Groq model choices offered in the Settings UI (advisory list; free-text also allowed). */
-export const GROQ_MODEL_OPTIONS = [
-  "qwen-3-32b",
-  "llama-3.3-70b-versatile",
-  "llama-3.1-8b-instant",
-] as const;
+/**
+ * @deprecated Model names are no longer hardcoded. The Settings UI populates the
+ * model dropdown exclusively from Groq's GET /openai/v1/models (the single source
+ * of truth), surfaced via ConnectionResult.availableModels after a successful
+ * Test Connection. Kept as an empty array only to preserve the barrel export for
+ * any legacy importer; do NOT use it to seed model choices.
+ */
+export const GROQ_MODEL_OPTIONS = [] as const;
 
-/** Safe defaults: every AI capability OFF. With these defaults the app == current build. */
+/**
+ * Safe defaults: every AI capability OFF. With these defaults the app == current build.
+ * NOTE: `model` is intentionally empty — there is no hardcoded runtime model default.
+ * The user must pick a model from the live Groq list before AI can run (§13).
+ */
 export const DEFAULT_AI_SETTINGS: AISettings = {
   enabled: false,
   providerId: "groq",
-  model: "qwen-3-32b",
+  model: "",
   temperature: 0.2,
   strictGrounding: true,
   enableExecutiveRewrite: false,
