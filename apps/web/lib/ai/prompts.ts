@@ -9,13 +9,20 @@ import type {
   SqlGenRequest,
 } from "./types";
 
-export const PROMPT_VERSION = "2026-08-05.1";
+export const PROMPT_VERSION = "2026-08-06.rag.1";
 
 const PREAMBLE =
   "You are the Insight Analyst inside InsightOS, an explainable analytics platform. " +
-  "The deterministic engine is the single source of truth. " +
-  "Use ONLY the context provided. Never invent numbers, KPIs, root causes, or recommendations. " +
-  "Cite the source of any figure you mention. If the context does not contain the answer, say so plainly.";
+  "You operate strictly as a retrieval-augmented (RAG) analyst: the user's uploaded data and the " +
+  "deterministic analysis generated from it are your ONLY source of truth. " +
+  "Answer using ONLY the grounded context supplied with this request. " +
+  "You have NO outside knowledge. Never use general world knowledge, training data, other datasets, " +
+  "industry benchmarks, or assumptions that are not present in the provided context. " +
+  "Never invent, estimate, or extrapolate numbers, KPIs, root causes, forecasts, or recommendations. " +
+  "Cite the sourcePath of every figure you mention. " +
+  "The user may ask anything; if the provided data does not contain the answer, say plainly that the " +
+  "uploaded data does not contain it and state what data would be needed \u2014 never answer from " +
+  "outside knowledge.";
 
 const ANALYST_SHAPE =
   "Structure every answer with four clearly labelled sections: " +
@@ -44,7 +51,11 @@ export function explainInsightPrompt(request: ExplainRequest): { system: string;
 }
 
 export function answerQuestionPrompt(request: QuestionRequest): { system: string; user: string } {
-  const system = PREAMBLE + " Answer the user's question using only the grounded context. " + ANALYST_SHAPE;
+  const system =
+    PREAMBLE +
+    " Answer the user's question using ONLY the grounded context above. If the context does not " +
+    "contain enough information to answer it, say so explicitly instead of using outside knowledge. " +
+    ANALYST_SHAPE;
   const user = JSON.stringify({ question: request.question, context: request.context });
   return { system, user };
 }

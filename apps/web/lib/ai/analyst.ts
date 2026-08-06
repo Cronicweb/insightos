@@ -23,7 +23,7 @@ import { DEFAULT_AI_BUDGET } from './types';
  * Kept local so the facade never depends on prompts.ts internals; the registry split (§13.2)
  * can re-export/override this without changing the facade's public behavior.
  */
-export const ANALYST_PROMPT_VERSION = 'analyst-v1';
+export const ANALYST_PROMPT_VERSION = 'analyst-rag-v2';
 
 /** Map a focus/context to the deterministic engines that ground it (for AI Trace §15.3). */
 export function reasoningSourcesFor(
