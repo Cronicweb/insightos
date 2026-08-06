@@ -21,6 +21,7 @@ import argparse
 import json
 import sys
 import time
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,27 @@ _DEMO_KEYS = ("banking", "ecommerce", "marketing", "retail",
 
 
 # --------------------------------------------------------------------------- #
+def _rotating_seed(key: str) -> int:
+    """A generator seed that changes once per calendar month.
+
+    The demo datasets anchor themselves to "last completed month", so the window
+    they describe moves with the calendar. The magnitudes did not: every rebuild
+    reused the generators' fixed default seeds, so the published site showed the
+    same headline percentages forever and read as a frozen mock-up.
+
+    Rotating the seed monthly keeps every rebuild *within* a month reproducible
+    (a re-run after a hotfix does not shuffle the numbers) while making the demo
+    genuinely new data each period. The planted signals are structural, not
+    random, so the story each dataset tells survives the seed change.
+
+    The test-suite calls the generators directly and keeps their fixed default
+    seeds, so this rotation never makes CI non-deterministic.
+    """
+    today = date.today()
+    period = today.year * 12 + today.month
+    return period * 1000 + _DEMO_KEYS.index(key) * 7 + 7
+
+
 def _write_json(path: Path, payload: Any, *, minify: bool = True) -> int:
     path.parent.mkdir(parents=True, exist_ok=True)
     text = (json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
@@ -84,8 +106,9 @@ def cmd_demo_build(args: argparse.Namespace) -> int:
 
     for key in keys:
         t0 = time.perf_counter()
-        print(f"  building {key} ...", flush=True)
-        dataset = generate(key)
+        seed = args.seed if args.seed is not None else _rotating_seed(key)
+        print(f"  building {key} (seed {seed}) ...", flush=True)
+        dataset = generate(key, seed=seed)
         result = analyse(dataset.frame, AnalysisOptions(dataset_name=dataset.name))
 
         if result.warnings:
@@ -207,6 +230,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_build.add_argument("--with-data", action="store_true",
                          help="also emit a row sample for the data preview table")
     p_build.add_argument("--sample-rows", type=int, default=200)
+    p_build.add_argument("--seed", type=int, default=None,
+                         help="pin the generator seed (default: rotates monthly, "
+                              "so the published demo is new data each period)")
     p_build.add_argument("--strict", action="store_true",
                          help="fail the build if any analysis stage warns")
     p_build.set_defaults(func=cmd_demo_build)

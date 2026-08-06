@@ -8,8 +8,13 @@ on:
   # time. Deploying weekly keeps the published demos current even when the
   # repository is quiet, so the quality report's timeliness score stays
   # honest instead of decaying with the calendar.
+  #
+  # The 1st-of-month run matters most: that is when both the reporting window
+  # and the rotating generator seed advance, so it republishes the site with a
+  # genuinely new period instead of leaving it up to six days behind.
   schedule:
     - cron: '17 6 * * 1'
+    - cron: '17 6 1 * *'
 
 permissions:
   contents: read
