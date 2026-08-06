@@ -13,6 +13,14 @@
 // validated — AI enabled, API key present, a successful provider validation, a model selected,
 // and that model present in the live provider list. Otherwise Ask is disabled with a clear reason,
 // so a question can never fall through to a confusing "Provider = local-policy / No AI Call" state.
+//
+// RUNTIME WIRING FIX: the Ask button must send the QUESTION THE USER TYPED, not the seeded
+// investigation title. Previously ask() forwarded `g.nodes[selectedId].question` (which is always
+// the node's seeded title, e.g. "What changed and why?"), so the `?? question` fallback never
+// fired and the user's live input was silently dropped. We now forward the typed `question`,
+// falling back to the node title only when the input box is blank. The investigation title is
+// preserved as CONTEXT (via buildContext / the node), while the current user question is exactly
+// what was typed. No architecture, engine, or Investigation Graph design change.
 import * as React from 'react';
 import {
   AnalystFacade,
@@ -137,6 +145,19 @@ export function InsightAnalystWorkspace({
         // memory: contextDelta carries forward previously referenced sourcePaths.
         const context = lastContextRef.current ? contextDelta(analysisKey, base, focus) : base;
         lastContextRef.current = context;
+        // Runtime trace (dev only): prove the USER'S question — not the node title — reaches the
+        // provider. Investigation title stays as context; the current user question is `q`.
+        if (process.env.NODE_ENV !== 'production') {
+          const g0 = facade.getGraph();
+          // eslint-disable-next-line no-console
+          console.debug('[InsightAnalyst] ask()', {
+            userInput: q,
+            activeInvestigationTitle: g0?.nodes[g0.rootId]?.question,
+            selectedNodeTitle: g0?.nodes[nodeId]?.question,
+            questionSentToFacade: q,
+            carriedProvenance: context.provenance,
+          });
+        }
         await facade.ask(nodeId, q, context);
         const g = facade.getGraph();
         if (g) setGraph({ ...g });
@@ -149,6 +170,8 @@ export function InsightAnalystWorkspace({
 
   // THE single submission path. Ask, Enter/keyboard activation, follow-ups and +Branch all
   // funnel through here, so every route behaves exactly like the (working) +Branch route.
+  // Supersedes the earlier standalone ask(): the question the user typed is what gets sent,
+  // never the node title (the empty-input fallback is resolved by ask() below).
   const submit = React.useCallback(
     (raw: string, parentId?: string) => {
       const facade = facadeRef.current;
@@ -173,7 +196,19 @@ export function InsightAnalystWorkspace({
     [answer, ready, selectedId],
   );
 
-  const ask = React.useCallback(() => submit(question), [submit, question]);
+  const ask = React.useCallback(() => {
+    const typed = question.trim();
+    if (typed) {
+      submit(typed);
+      return;
+    }
+    // Empty input box only: fall back to the anchor node's seeded title so Ask still works
+    // on a freshly seeded investigation (behaviour kept from #11).
+    const g = facadeRef.current?.getGraph();
+    const anchorId = selectedId ?? g?.rootId;
+    const seeded = g && anchorId ? g.nodes[anchorId]?.question : undefined;
+    if (seeded) submit(seeded);
+  }, [submit, question, selectedId]);
 
   const branch = React.useCallback((parentId: string) => submit('Why?', parentId), [submit]);
 
