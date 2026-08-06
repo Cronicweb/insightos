@@ -1,6 +1,12 @@
 // InsightOS — AI Operating Policy (§28). LOCAL intent classification (rules + keyword/structure
 // matching, NO LLM), prompt-injection defense, standard refusal, and system identity.
-// Runs BEFORE any provider call so unsupported/malicious prompts never reach the model.
+// Runs BEFORE any provider call so malicious prompts never reach the model.
+//
+// SCOPE MODEL: the user may ask ANYTHING. Scope is no longer enforced by refusing the question;
+// it is enforced by the ANSWER being strictly retrieval-augmented (RAG) over the uploaded data and
+// the deterministic analysis only (see prompts.ts PREAMBLE, prompts/system.ts, grounding.ts and
+// validation.ts). If the provided data cannot answer a question, the analyst says so instead of
+// drawing on outside knowledge. Prompt injection is still refused locally (§28.5).
 
 import type { GroundedContext, InvestigationResponse } from './types';
 
@@ -44,17 +50,6 @@ const INJECTION_PATTERNS: RegExp[] = [
   /pretend\s+(to\s+be|you\s+are)/i,
 ];
 
-// Out-of-scope markers (§28.2). Strong signals a request is general-purpose.
-const OUT_OF_SCOPE: RegExp[] = [
-  /\b(write|generate|create)\b.*\b(python|java|c\+\+|javascript|code|program|script|function)\b/i,
-  /\b(poem|haiku|joke|story|resume|cover\s+letter|essay|song|lyrics)\b/i,
-  /\btranslate\b/i,
-  /\b(weather|forecast\s+the\s+weather)\b/i,
-  /\bquantum|physics|chemistry|biology|astronomy\b/i,
-  /\b(who\s+won|history\s+of|capital\s+of|recipe|movie|celebrity)\b/i,
-  /\bsolve\b.*\b(equation|integral|derivative|math\s+problem)\b/i,
-];
-
 // In-scope class markers (§28.1). Order matters: first strong match wins.
 const SCOPE_MARKERS: Array<{ intent: IntentClass; re: RegExp }> = [
   { intent: 'SQL', re: /\b(sql|query|select\b|group\s+by|join)\b/i },
@@ -70,18 +65,20 @@ const SCOPE_MARKERS: Array<{ intent: IntentClass; re: RegExp }> = [
 
 // Bare conversational follow-ups asked inside an investigation ("Why?", "How?", "Explain
 // further?", "Tell me more"). They inherit their scope from the answered node they follow, so
-// they must not be refused. Anchored to the WHOLE question so only bare follow-ups qualify:
-// "Explain quantum physics" is still out of scope.
+// they must not be refused. Anchored to the WHOLE question so only bare follow-ups qualify.
 const FOLLOW_UP =
   /^(why|how|and\s+(why|how)|explain(\s+(this|that|it|further|more|why|how))?|elaborate|tell\s+me\s+more|more\s+details?|go\s+deeper|dig\s+deeper|expand(\s+on\s+(this|that))?)\b[\s?.!]*$/i;
 
 /**
- * Classify a user question LOCALLY (§28.4). Deterministic; no LLM. Injection and out-of-scope are
- * refused; otherwise the strongest in-scope marker decides the class. strictMode (default true)
- * refuses anything without a positive in-scope signal; when off, unmatched questions that aren't
- * clearly out-of-scope are treated as ANALYSIS (still grounded downstream).
+ * Classify a user question LOCALLY (§28.4). Deterministic; no LLM.
+ *
+ * Any question is allowed through — only prompt-injection attempts are refused here. Questions that
+ * match no in-scope marker are classified as ANALYSIS and answered strictly from the grounded
+ * context (RAG); the model is instructed to say the data does not contain the answer rather than
+ * fall back on outside knowledge. `strictMode` is retained for API compatibility and no longer
+ * gates whether a question may be asked.
  */
-export function classifyIntent(question: string, strictMode = true): Classification {
+export function classifyIntent(question: string, _strictMode = true): Classification {
   const q = (question ?? '').trim();
   if (!q) return { intent: 'UNSUPPORTED', supported: false, reason: 'out_of_scope' };
 
@@ -90,20 +87,12 @@ export function classifyIntent(question: string, strictMode = true): Classificat
   }
 
   const scopeHit = SCOPE_MARKERS.find((m) => m.re.test(q));
-
-  for (const re of OUT_OF_SCOPE) {
-    if (re.test(q)) {
-      // Out-of-scope markers win unless there is ALSO a strong in-scope signal.
-      if (!scopeHit) return { intent: 'UNSUPPORTED', supported: false, reason: 'out_of_scope', matched: [re.source] };
-    }
-  }
-
   if (scopeHit) return { intent: scopeHit.intent, supported: true, matched: [scopeHit.re.source] };
 
   // Follow-ups carry the scope of the question they follow.
   if (FOLLOW_UP.test(q)) return { intent: 'ROOT_CAUSE', supported: true, matched: [FOLLOW_UP.source] };
 
-  if (strictMode) return { intent: 'UNSUPPORTED', supported: false, reason: 'out_of_scope' };
+  // Anything else: answerable, but only from the grounded context.
   return { intent: 'ANALYSIS', supported: true };
 }
 
@@ -112,7 +101,7 @@ export function refusalResponse(context?: GroundedContext): InvestigationRespons
   return {
     summary: STANDARD_REFUSAL,
     evidence: [],
-    confidence: { level: 'high', basis: 'out-of-scope request refused locally (no AI call)' },
+    confidence: { level: 'high', basis: 'request refused locally by the AI Operating Policy (no AI call)' },
     supportingCharts: [],
     statisticalTests: [],
     nextInvestigation: [],
