@@ -60,13 +60,20 @@ const SCOPE_MARKERS: Array<{ intent: IntentClass; re: RegExp }> = [
   { intent: 'SQL', re: /\b(sql|query|select\b|group\s+by|join)\b/i },
   { intent: 'ROOT_CAUSE', re: /\b(root\s+cause|why\s+did|why\b|driver|contribut|caused?|what\s+(has\s+)?changed?|changed?\s+and\s+why|explain\s+(the\s+)?change)\b/i },
   { intent: 'FORECAST', re: /\b(forecast|predict|projection|trend|next\s+(quarter|month|period))\b/i },
-  { intent: 'RECOMMENDATION', re: /\b(recommend|action|next\s+step|should\s+(we|management))\b/i },
+  { intent: 'RECOMMENDATION', re: /\b(recommend|action|next\s+step|should\s+(we|i|management)|what\s+(should|can|could)\s+(we|i)\s+do|what\s+(to|do\s+(we|i))\s+do|what\s+now|so\s+what|how\s+do\s+(we|i)\s+(fix|improve|address|respond)|remediat|mitigat|prioriti)\b/i },
   { intent: 'SEMANTIC_MODEL', re: /\b(semantic|concept|mapping|column\s+meaning|data\s+dictionary)\b/i },
   { intent: 'INVESTIGATION', re: /\b(investigat|branch|compare\s+nodes?|decision\s+replay|graph)\b/i },
   { intent: 'INSIGHTOS', re: /\b(insightos|this\s+page|platform|how\s+(do|does)\s+(i|it)|workflow|setting|export)\b/i },
   { intent: 'DATASET', re: /\b(dataset|column|row|record|table|upload|data\s+quality|missing|null)\b/i },
-  { intent: 'ANALYSIS', re: /\b(kpi|metric|revenue|retention|churn|anomal|statistic|chart|analysis|confidence)\b/i },
+  { intent: 'ANALYSIS', re: /\b(kpi|metric|revenue|retention|churn|anomal|statistic|chart|analysis|confidence|segment|cohort|region|channel|customer|product|sales|volume|cost|margin|profit|growth|decline|increase|decrease|spike|drop|outlier|distribution|average|median|total|percent|impact|performance|driver|summar|report|insight|finding|evidence|breakdown|correlat|compare)\b/i },
 ];
+
+// Bare conversational follow-ups asked inside an investigation ("Why?", "How?", "Explain
+// further?", "Tell me more"). They inherit their scope from the answered node they follow, so
+// they must not be refused. Anchored to the WHOLE question so only bare follow-ups qualify:
+// "Explain quantum physics" is still out of scope.
+const FOLLOW_UP =
+  /^(why|how|and\s+(why|how)|explain(\s+(this|that|it|further|more|why|how))?|elaborate|tell\s+me\s+more|more\s+details?|go\s+deeper|dig\s+deeper|expand(\s+on\s+(this|that))?)\b[\s?.!]*$/i;
 
 /**
  * Classify a user question LOCALLY (§28.4). Deterministic; no LLM. Injection and out-of-scope are
@@ -92,6 +99,9 @@ export function classifyIntent(question: string, strictMode = true): Classificat
   }
 
   if (scopeHit) return { intent: scopeHit.intent, supported: true, matched: [scopeHit.re.source] };
+
+  // Follow-ups carry the scope of the question they follow.
+  if (FOLLOW_UP.test(q)) return { intent: 'ROOT_CAUSE', supported: true, matched: [FOLLOW_UP.source] };
 
   if (strictMode) return { intent: 'UNSUPPORTED', supported: false, reason: 'out_of_scope' };
   return { intent: 'ANALYSIS', supported: true };
