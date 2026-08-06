@@ -1,14 +1,11 @@
 'use client';
-
 // InsightOS — AI Settings panel (Phase 1).
 // Configures the additive, vendor-agnostic AI layer. ALL AI is OFF by default.
 // The API key is stored ONLY in browser localStorage and never leaves the device
 // except directly to the user's chosen provider. See docs/ai-architecture.md §3, §9, §13.
-
 import * as React from 'react';
 import {
   DEFAULT_AI_SETTINGS,
-  GROQ_MODEL_OPTIONS,
   loadAISettings,
   saveAISettings,
   clearAISettings,
@@ -102,6 +99,9 @@ export function AISettingsPanel() {
     model: DEFAULT_AI_SETTINGS.model,
   });
   const [testing, setTesting] = React.useState(false);
+  // Live model list from the last successful Test Connection. Never hardcoded;
+  // sourced only from GET /openai/v1/models via ConnectionResult.availableModels.
+  const [availableModels, setAvailableModels] = React.useState<string[]>([]);
 
   React.useEffect(() => {
     setSettings(loadAISettings());
@@ -121,6 +121,7 @@ export function AISettingsPanel() {
     setSettings({ ...DEFAULT_AI_SETTINGS });
     setSavedAt(Date.now());
     setConn({ state: 'not_connected', provider: 'groq', model: DEFAULT_AI_SETTINGS.model });
+    setAvailableModels([]);
   }, []);
 
   // Test the current provider/key WITHOUT sending any data. Browser-only; the key is never logged.
@@ -130,10 +131,17 @@ export function AISettingsPanel() {
     try {
       const result = await testGroqConnection(settings);
       setConn(result);
+      // Populate the dropdown ONLY from the live list returned by the provider.
+      setAvailableModels(result.availableModels ?? []);
+      // If the saved model is not among the returned models, clear it and force
+      // a re-selection. Never silently continue with an invalid model.
+      if (result.state === 'invalid_model' && settings.model) {
+        update({ model: '' });
+      }
     } finally {
       setTesting(false);
     }
-  }, [settings]);
+  }, [settings, update]);
 
   // Any edit to provider/model/key invalidates a prior successful validation.
   const invalidateConn = React.useCallback(() => {
@@ -141,6 +149,8 @@ export function AISettingsPanel() {
   }, []);
 
   const aiOff = !settings.enabled;
+  const hasModels = availableModels.length > 0;
+  const modelInvalid = hasModels && settings.model !== '' && !availableModels.includes(settings.model);
 
   return (
     <div className="mx-auto w-full max-w-2xl space-y-5">
@@ -163,7 +173,6 @@ export function AISettingsPanel() {
             masked sample values, summary statistics) is sent to your chosen provider &mdash; never the
             full dataset or raw personal information.
           </div>
-
           <div className="mt-2 divide-y divide-line">
             <Toggle
               id="ai-enabled"
@@ -224,26 +233,39 @@ export function AISettingsPanel() {
               ))}
             </select>
           </div>
-
           <div>
             <label htmlFor="ai-model" className={FIELD_LABEL}>
               Model
             </label>
-            <input
+            <select
               id="ai-model"
               className={INPUT}
-              list="ai-model-options"
               value={settings.model}
-              disabled={aiOff}
+              disabled={aiOff || !hasModels}
               onChange={(e) => { update({ model: e.target.value }); invalidateConn(); }}
-            />
-            <datalist id="ai-model-options">
-              {GROQ_MODEL_OPTIONS.map((m) => (
-                <option key={m} value={m} />
+            >
+              {/* Placeholder until a model is chosen. No hardcoded model default. */}
+              <option value="" disabled>
+                Select a model
+              </option>
+              {/* Populated ONLY from the live Groq model list after a successful test. */}
+              {availableModels.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
               ))}
-            </datalist>
+            </select>
+            {!hasModels ? (
+              <p className="mt-1 text-xs text-muted">
+                Run <span className="font-medium text-ink">Test Connection</span> to load the
+                available models for your key.
+              </p>
+            ) : modelInvalid || settings.model === '' ? (
+              <p className="mt-1 text-xs text-negative">
+                Select a model from the available list to continue.
+              </p>
+            ) : null}
           </div>
-
           <div>
             <label htmlFor="ai-temp" className={FIELD_LABEL}>
               Temperature: {settings.temperature.toFixed(2)}
@@ -262,7 +284,6 @@ export function AISettingsPanel() {
             />
             <p className="mt-1 text-xs text-muted">Lower is more stable and deterministic-friendly.</p>
           </div>
-
           <div>
             <label htmlFor="ai-key" className={FIELD_LABEL}>
               API key (stored in this browser only)
@@ -319,7 +340,6 @@ export function AISettingsPanel() {
             <p className="mt-1 text-xs text-muted">
               Never committed or uploaded. Cleared when you reset or clear browser storage.
             </p>
-
             {/* Test Connection + status indicator */}
             <div className="mt-3 rounded-xl border border-line bg-elevated/40 p-3">
               <div className="flex items-center justify-between gap-3">
@@ -330,10 +350,10 @@ export function AISettingsPanel() {
                       conn.state === 'connected'
                         ? 'bg-positive'
                         : conn.state === 'connecting'
-                          ? 'bg-accent animate-pulse'
-                          : conn.state === 'not_connected'
-                            ? 'bg-subtle'
-                            : 'bg-negative',
+                        ? 'bg-accent animate-pulse'
+                        : conn.state === 'not_connected'
+                        ? 'bg-subtle'
+                        : 'bg-negative',
                     )}
                     aria-hidden
                   />
@@ -361,7 +381,7 @@ export function AISettingsPanel() {
                 </div>
                 <div className="min-w-0">
                   <dt className="text-muted/70">Model</dt>
-                  <dd className="truncate font-medium">{conn.model}</dd>
+                  <dd className="truncate font-medium">{conn.model || '—'}</dd>
                 </div>
                 <div className="min-w-0">
                   <dt className="text-muted/70">Latency</dt>
