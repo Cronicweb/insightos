@@ -50,6 +50,18 @@ export function TopNav({
 }) {
   const { theme, toggle } = useTheme();
 
+  // Keep the active tab visible when the desktop nav overflows horizontally (§ top-nav clipping).
+  // The nav is a horizontal scroll container; when the active tab changes we scroll it into view
+  // so the first (Overview) and last (Insight Analyst) tabs are never hidden or clipped.
+  const navRef = React.useRef<HTMLElement | null>(null);
+  const activeRef = React.useRef<HTMLButtonElement | null>(null);
+  React.useEffect(() => {
+    const el = activeRef.current;
+    if (!el) return;
+    // inline: 'nearest' avoids jumping the page vertically; only the nav scrolls horizontally.
+    el.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+  }, [tab]);
+
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-surface/85 backdrop-blur-xl supports-[backdrop-filter]:bg-surface/65">
       <div className="flex h-14 items-center gap-3 px-3 sm:px-6 lg:gap-6">
@@ -80,12 +92,14 @@ export function TopNav({
         </div>
 
         <nav
+          ref={navRef}
           aria-label="Workspace views"
-          className="no-scrollbar hidden min-w-0 flex-1 items-center justify-start gap-1 overflow-x-auto lg:flex xl:justify-center"
+          className="no-scrollbar hidden min-w-0 flex-1 items-center justify-start gap-1 overflow-x-auto lg:flex"
         >
           {TABS.map((t) => (
             <button
               key={t.id}
+              ref={tab === t.id ? activeRef : undefined}
               type="button"
               onClick={() => onTabChange(t.id)}
               aria-current={tab === t.id ? 'page' : undefined}
