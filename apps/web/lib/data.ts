@@ -21,7 +21,11 @@ function demoUrl(file: string): string {
 }
 
 async function getJson<T>(url: string): Promise<T> {
-  const res = await fetch(url, { cache: 'force-cache' });
+  // `force-cache` returns a cached entry even when it is stale, so a returning
+  // visitor kept seeing the demo numbers from whenever they first loaded the
+  // site - long after CI had republished them. `no-cache` revalidates against
+  // the ETag (a cheap 304 when nothing changed) so a redeploy is picked up.
+  const res = await fetch(url, { cache: 'no-cache' });
   if (!res.ok) throw new Error(`Failed to load ${url} (${res.status})`);
   return (await res.json()) as T;
 }
