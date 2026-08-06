@@ -28,6 +28,20 @@ import { InvestigationGraphView } from './investigation-graph-view';
 import { InvestigationResponseCard } from './investigation-response-card';
 import { Card, CardHeader, CardTitle, CardSubtitle, CardBody, Badge } from '@/components/ui/primitives';
 
+/**
+ * Pure question selector for the Ask action (extracted so it can be unit-tested without a DOM).
+ *
+ * REGRESSION GUARD: the user's typed question ALWAYS wins. The selected node's stored title is
+ * used only as a fallback when the input is empty. This is the exact decision point of the
+ * original bug (where the node title was sent to the provider instead of the typed question).
+ * Never overwrite typed input with the node title.
+ */
+export function resolveAskQuestion(typedQuestion: string, nodeTitle?: string): string {
+  const typed = typedQuestion.trim();
+  if (typed.length > 0) return typed;
+  return nodeTitle ?? typedQuestion;
+}
+
 export function InsightAnalystWorkspace({
   analysisKey,
   analysis,
@@ -44,6 +58,7 @@ export function InsightAnalystWorkspace({
   const [selectedId, setSelectedId] = React.useState<string | undefined>();
   const [pendingId, setPendingId] = React.useState<string | undefined>();
   const [question, setQuestion] = React.useState('What changed and why?');
+  const inputRef = React.useRef<HTMLInputElement | null>(null);
 
   // Provider readiness (browser-only validation; no dataset content is ever sent here).
   // 'unknown' until we validate; then either 'ready' or a specific not-ready reason.
@@ -125,7 +140,14 @@ export function InsightAnalystWorkspace({
         const context = buildContext(analysis, focus);
         await facade.ask(nodeId, q, context);
         const g = facade.getGraph();
-        if (g) setGraph({ ...g });
+        if (g) {
+          // Reflect the ACTIVE question on the answered node so the response card title and the
+          // investigation node label show what was actually asked (not the seeded placeholder).
+          // UI-state only: the Investigation Graph structure/provenance is untouched.
+          const node = g.nodes[nodeId];
+          if (node) node.question = q;
+          setGraph({ ...g });
+        }
       } finally {
         setPendingId(undefined);
       }
@@ -139,25 +161,43 @@ export function InsightAnalystWorkspace({
     if (!facade || !g || !selectedId) return;
     if (!ready) return;
     // BUGFIX (runtime wiring): send the user's typed question to the provider, NOT the
-    // selected node's stored title. The investigation context is preserved via `focus`
-    // (and the node the answer is attached to); we only replace the ACTIVE question.
-    // Fall back to the node's title only when the input is empty.
-    const typed = question.trim();
-    const q = typed.length > 0 ? typed : g.nodes[selectedId]?.question ?? question;
+    // selected node's stored title. Investigation context is preserved via `focus` and the
+    // target node; we only replace the ACTIVE question. See resolveAskQuestion().
+    const q = resolveAskQuestion(question, g.nodes[selectedId]?.question);
     void answer(selectedId, q, { kind: 'report' });
+    // UX: clear the box and keep focus so follow-up questions can be typed immediately.
+    setQuestion('');
+    inputRef.current?.focus();
   }, [answer, selectedId, question, ready]);
+
+  // Submit on Enter for quick follow-ups (Shift+Enter is left free for future multiline).
+  const onInputKeyDown = React.useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        ask();
+      }
+    },
+    [ask],
+  );
 
   const branch = React.useCallback(
     (parentId: string) => {
       const facade = facadeRef.current;
       if (!facade) return;
       if (!ready) return;
-      const res = facade.branch(parentId, 'Why?', { kind: 'question', text: 'Why?' });
+      // Initialize the branch input with the PARENT question, then let the user edit it.
+      // Once edited, the typed text always wins (resolveAskQuestion) — the node title is
+      // never forced back onto the provider request.
+      const parentQuestion = facade.getGraph()?.nodes[parentId]?.question ?? 'Why?';
+      const res = facade.branch(parentId, parentQuestion, { kind: 'question', text: parentQuestion });
       setGraph({ ...res.graph });
       setSelectedId(res.nodeId);
-      void answer(res.nodeId, 'Why?', { kind: 'question', text: 'Why?' });
+      // Seed the editable input and focus it; do NOT auto-dispatch, so the user can refine first.
+      setQuestion(parentQuestion);
+      inputRef.current?.focus();
     },
-    [answer, ready],
+    [ready],
   );
 
   const doExport = React.useCallback(() => {
@@ -239,8 +279,10 @@ export function InsightAnalystWorkspace({
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <input
+              ref={inputRef}
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
+              onKeyDown={onInputKeyDown}
               aria-label="Ask a question about this analysis"
               placeholder="Ask about this analysis…"
               disabled={!ready}
