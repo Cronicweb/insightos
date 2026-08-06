@@ -138,7 +138,13 @@ export function InsightAnalystWorkspace({
     const g = facade?.getGraph();
     if (!facade || !g || !selectedId) return;
     if (!ready) return;
-    void answer(selectedId, g.nodes[selectedId]?.question ?? question, { kind: 'report' });
+    // BUGFIX (runtime wiring): send the user's typed question to the provider, NOT the
+    // selected node's stored title. The investigation context is preserved via `focus`
+    // (and the node the answer is attached to); we only replace the ACTIVE question.
+    // Fall back to the node's title only when the input is empty.
+    const typed = question.trim();
+    const q = typed.length > 0 ? typed : g.nodes[selectedId]?.question ?? question;
+    void answer(selectedId, q, { kind: 'report' });
   }, [answer, selectedId, question, ready]);
 
   const branch = React.useCallback(
