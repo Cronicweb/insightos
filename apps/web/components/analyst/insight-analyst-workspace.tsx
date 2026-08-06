@@ -17,6 +17,7 @@ import * as React from 'react';
 import {
   AnalystFacade,
   buildContext,
+  contextDelta,
   loadAISettings,
   type ContextFocus,
   type InvestigationGraph,
@@ -137,7 +138,16 @@ export function InsightAnalystWorkspace({
       if (!ready) return;
       setPendingId(nodeId);
       try {
-        const context = buildContext(analysis, focus);
+        // Build the task-scoped grounded context, then — for a FOLLOW-UP whose parent was
+        // already answered — thread the prior investigation context forward via the existing
+        // contextDelta (§15.2). This anchors bare questions like "Why?" to the CURRENT
+        // investigation instead of treating them as isolated questions. Wiring only: no new
+        // orchestration, and the deterministic engine / prompt builder are untouched.
+        const base = buildContext(analysis, focus);
+        const g0 = facade.getGraph();
+        const parentId = g0?.nodes[nodeId]?.parentId;
+        const isFollowUp = Boolean(parentId && g0?.nodes[parentId!]?.response);
+        const context = isFollowUp ? contextDelta(analysisKey, base, focus) : base;
         await facade.ask(nodeId, q, context);
         const g = facade.getGraph();
         if (g) {
