@@ -1,7 +1,6 @@
 // InsightOS AI layer — default Groq provider (client-side fetch, no SDK, no server).
 // Implements AIProvider. All prompts are grounded; see docs/ai-architecture.md.
 // The API key is supplied at runtime from browser localStorage and never committed.
-
 import type { AIProvider } from "../provider";
 import { disabledAnswer } from "../provider";
 import { buildGuardedAnswer } from "../grounding";
@@ -119,14 +118,12 @@ export function createGroqProvider(settings: AISettings): AIProvider {
   return new GroqProvider(settings);
 }
 
-
 // ----------------------------------------------------------------------------
 // Connection test (browser-only). Validates the API key + model against Groq
 // WITHOUT sending any dataset content. The key is used solely for the request
 // Authorization header and is NEVER logged, stored elsewhere, or returned.
 // Reuses the same GROQ_ENDPOINT/base as chat(); no new provider abstraction.
 // ----------------------------------------------------------------------------
-
 export type ConnectionState =
   | 'not_connected'
   | 'connecting'
@@ -143,6 +140,12 @@ export interface ConnectionResult {
   latencyMs?: number;
   validatedAt?: number;
   detail?: string;
+  /**
+   * Exact model IDs returned by GET /openai/v1/models for this key.
+   * Populated on any authenticated response (connected OR invalid_model) so the
+   * Settings UI can offer a real, live-sourced dropdown. Never hardcoded.
+   */
+  availableModels?: string[];
 }
 
 const GROQ_MODELS_ENDPOINT = 'https://api.groq.com/openai/v1/models';
@@ -170,23 +173,42 @@ export async function testGroqConnection(settings: AISettings): Promise<Connecti
     return { state: 'network_error', provider, model, detail: 'Request failed to send' };
   }
   const latencyMs = Date.now() - started;
-
   if (res.status === 401 || res.status === 403) {
     return { state: 'invalid_key', provider, model, latencyMs, detail: 'Authentication failed' };
   }
   if (!res.ok) {
     return { state: 'unreachable', provider, model, latencyMs, detail: `Provider returned ${res.status}` };
   }
-
-  // Confirm the selected model is available to this key.
+  // Confirm the selected model is available to this key, and surface the full list.
   try {
     const data = (await res.json()) as { data?: Array<{ id?: string }> };
-    const ids = new Set((data.data ?? []).map((m) => m.id).filter(Boolean) as string[]);
-    if (ids.size > 0 && !ids.has(model)) {
-      return { state: 'invalid_model', provider, model, latencyMs, detail: 'Selected model not available' };
+    const availableModels = (data.data ?? [])
+      .map((m) => m.id)
+      .filter(Boolean) as string[];
+    const ids = new Set(availableModels);
+    // A model must be explicitly chosen from the live list. An empty/absent model,
+    // or one not present in the returned list, is reported as invalid_model so the
+    // UI can force a re-selection. Never silently continue with an invalid model.
+    if (availableModels.length > 0 && (!model || !ids.has(model))) {
+      return {
+        state: 'invalid_model',
+        provider,
+        model,
+        latencyMs,
+        detail: model ? 'Selected model not available' : 'No model selected',
+        availableModels,
+      };
     }
+    return {
+      state: 'connected',
+      provider,
+      model,
+      latencyMs,
+      validatedAt: Date.now(),
+      availableModels,
+    };
   } catch {
     // If the list can't be parsed, auth still succeeded: treat as connected.
+    return { state: 'connected', provider, model, latencyMs, validatedAt: Date.now() };
   }
-  return { state: 'connected', provider, model, latencyMs, validatedAt: Date.now() };
 }
