@@ -49,6 +49,23 @@ export function TopNav({
   onSettings?: () => void;
 }) {
   const { theme, toggle } = useTheme();
+  const navRef = React.useRef<HTMLElement | null>(null);
+
+  // Desktop nav is horizontally scrollable; keep the active tab in view so no tab is ever
+  // clipped or unreachable. Scrolls the nav container only — never the page.
+  React.useEffect(() => {
+    const nav = navRef.current;
+    const active = nav?.querySelector<HTMLElement>('[data-active="true"]');
+    if (!nav || !active) return;
+    const navBox = nav.getBoundingClientRect();
+    const tabBox = active.getBoundingClientRect();
+    const pad = 12;
+    if (tabBox.left < navBox.left + pad) {
+      nav.scrollLeft -= navBox.left + pad - tabBox.left;
+    } else if (tabBox.right > navBox.right - pad) {
+      nav.scrollLeft += tabBox.right - (navBox.right - pad);
+    }
+  }, [tab]);
 
   return (
     <header className="sticky top-0 z-40 border-b border-line bg-surface/85 backdrop-blur-xl supports-[backdrop-filter]:bg-surface/65">
@@ -80,8 +97,9 @@ export function TopNav({
         </div>
 
         <nav
+          ref={navRef}
           aria-label="Workspace views"
-          className="no-scrollbar hidden min-w-0 flex-1 items-center justify-start gap-1 overflow-x-auto lg:flex xl:justify-center"
+          className="no-scrollbar hidden min-w-0 flex-1 scroll-px-3 items-center justify-start gap-1 overflow-x-auto scroll-smooth lg:flex"
         >
           {TABS.map((t) => (
             <button
@@ -89,6 +107,7 @@ export function TopNav({
               type="button"
               onClick={() => onTabChange(t.id)}
               aria-current={tab === t.id ? 'page' : undefined}
+              data-active={tab === t.id ? 'true' : undefined}
               className={cn(
                 'shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-[13px] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
                 tab === t.id
