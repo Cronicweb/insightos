@@ -17,8 +17,11 @@ import * as React from 'react';
 import {
   AnalystFacade,
   buildContext,
+  clearSession,
+  contextDelta,
   loadAISettings,
   type ContextFocus,
+  type GroundedContext,
   type InvestigationGraph,
   type InvestigationResponse,
 } from '@/lib/ai';
@@ -44,6 +47,9 @@ export function InsightAnalystWorkspace({
   const [selectedId, setSelectedId] = React.useState<string | undefined>();
   const [pendingId, setPendingId] = React.useState<string | undefined>();
   const [question, setQuestion] = React.useState('What changed and why?');
+  // Last grounded context for this investigation. Its presence marks a follow-up, so the next
+  // question is built as a contextDelta (existing conversation memory) instead of a cold context.
+  const lastContextRef = React.useRef<GroundedContext | null>(null);
 
   // Provider readiness (browser-only validation; no dataset content is ever sent here).
   // 'unknown' until we validate; then either 'ready' or a specific not-ready reason.
@@ -98,6 +104,10 @@ export function InsightAnalystWorkspace({
     setEnabled(s.enabled);
     setHasKey(Boolean(s.apiKey));
     if (!s.enabled) return;
+    // A new investigation starts from a clean slate: drop prior conversation memory so
+    // follow-up context never leaks across investigations.
+    clearSession(analysisKey);
+    lastContextRef.current = null;
     const facade = new AnalystFacade(analysisKey);
     facadeRef.current = facade;
     const g = facade.startInvestigation({
@@ -122,7 +132,11 @@ export function InsightAnalystWorkspace({
       if (!ready) return;
       setPendingId(nodeId);
       try {
-        const context = buildContext(analysis, focus);
+        const base = buildContext(analysis, focus);
+        // Follow-ups ("Why?", "How?", "Explain further?") reuse the existing conversation
+        // memory: contextDelta carries forward previously referenced sourcePaths.
+        const context = lastContextRef.current ? contextDelta(analysisKey, base, focus) : base;
+        lastContextRef.current = context;
         await facade.ask(nodeId, q, context);
         const g = facade.getGraph();
         if (g) setGraph({ ...g });
@@ -130,29 +144,38 @@ export function InsightAnalystWorkspace({
         setPendingId(undefined);
       }
     },
-    [analysis, ready],
+    [analysis, analysisKey, ready],
   );
 
-  const ask = React.useCallback(() => {
-    const facade = facadeRef.current;
-    const g = facade?.getGraph();
-    if (!facade || !g || !selectedId) return;
-    if (!ready) return;
-    void answer(selectedId, g.nodes[selectedId]?.question ?? question, { kind: 'report' });
-  }, [answer, selectedId, question, ready]);
-
-  const branch = React.useCallback(
-    (parentId: string) => {
+  // THE single submission path. Ask, Enter/keyboard activation, follow-ups and +Branch all
+  // funnel through here, so every route behaves exactly like the (working) +Branch route.
+  const submit = React.useCallback(
+    (raw: string, parentId?: string) => {
       const facade = facadeRef.current;
-      if (!facade) return;
-      if (!ready) return;
-      const res = facade.branch(parentId, 'Why?', { kind: 'question', text: 'Why?' });
+      const g = facade?.getGraph();
+      if (!facade || !g || !ready) return;
+      const q = raw.trim();
+      if (!q) return;
+      const anchorId = parentId ?? selectedId ?? g.rootId;
+      const anchor = g.nodes[anchorId];
+      const focus: ContextFocus = { kind: 'question', text: q };
+      // Reuse the anchor node while it is still unanswered and asks the same question;
+      // otherwise branch a new node — identical to the +Branch route.
+      if (!parentId && anchor && !anchor.response && anchor.question === q) {
+        void answer(anchorId, q, focus);
+        return;
+      }
+      const res = facade.branch(anchorId, q, focus);
       setGraph({ ...res.graph });
       setSelectedId(res.nodeId);
-      void answer(res.nodeId, 'Why?', { kind: 'question', text: 'Why?' });
+      void answer(res.nodeId, q, focus);
     },
-    [answer, ready],
+    [answer, ready, selectedId],
   );
+
+  const ask = React.useCallback(() => submit(question), [submit, question]);
+
+  const branch = React.useCallback((parentId: string) => submit('Why?', parentId), [submit]);
 
   const doExport = React.useCallback(() => {
     const facade = facadeRef.current;
@@ -235,6 +258,12 @@ export function InsightAnalystWorkspace({
             <input
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey && !askDisabled) {
+                  e.preventDefault();
+                  ask();
+                }
+              }}
               aria-label="Ask a question about this analysis"
               placeholder="Ask about this analysis…"
               disabled={!ready}
@@ -278,7 +307,7 @@ export function InsightAnalystWorkspace({
             <InvestigationResponseCard
               question={selected.question}
               response={selected.response as InvestigationResponse}
-              onNext={(q) => selectedId && ready && answer(selectedId, q, { kind: 'question', text: q })}
+              onNext={(q) => submit(q)}
             />
           ) : (
             <Card>
