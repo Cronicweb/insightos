@@ -6,6 +6,7 @@ import type { Analysis, DatasetSummary } from '@/lib/types';
 import { fixed, formatInt, formatValue, titleCase } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { DeltaPill, Kbd } from './ui/primitives';
+import { formulaTooltip } from '@/lib/kpi-formula';
 
 /**
  * Left rail: dataset switcher on top, then a searchable, expandable KPI list -
@@ -239,7 +240,10 @@ export function Sidebar({
                           </span>
                         ) : null}
                       </span>
-                      <span className="mt-0.5 block truncate text-2xs text-subtle">
+                      <span
+                        className="mt-0.5 block cursor-help truncate text-2xs text-subtle"
+                        title={formulaTooltip(k)}
+                      >
                         {k.formula}
                       </span>
                     </span>
