@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Play, Database, TriangleAlert, Copy, Check, Languages, Download } from 'lucide-react';
+import { Play, Database, TriangleAlert, Copy, Check, Languages, Download, TableProperties } from 'lucide-react';
 import { SectionLabel } from '@/components/ui/primitives';
 import type { Analysis, DatasetSchema } from '@/lib/types';
 import { DIALECTS, translate, type Dialect } from '@/lib/sql-dialect';
@@ -249,11 +249,16 @@ ORDER BY segment, period;`,
  */
 export function SqlPanel({ analysis }: { analysis: Analysis }) {
   const uploaded = analysis.key?.startsWith('upload:') ? analysis.key.slice('upload:'.length) : null;
-  // Demo datasets have no table behind them, but they do carry a profiled
-  // schema - so the recipes are still worth writing and reading, they simply
-  // cannot be executed until a file is loaded.
+  // A demo dataset has no table behind it *yet*: its analysis was pre-computed
+  // over the full source, but a sample of the real rows is published alongside
+  // it. Loading that sample gives the console a genuine table, so the Run
+  // button is dead only until the sample is fetched - not permanently.
   const table = uploaded ?? (analysis.key ?? 'dataset').replace(/[^A-Za-z0-9_]/g, '_');
-  const runnable = uploaded !== null;
+  const demoKey = uploaded === null ? analysis.key ?? null : null;
+  const [sample, setSample] = React.useState<{ rows: number; columns: number } | null>(null);
+  const [loadingSample, setLoadingSample] = React.useState(false);
+  const [sampleError, setSampleError] = React.useState<string | null>(null);
+  const runnable = uploaded !== null || sample !== null;
 
   const [sql, setSql] = React.useState('');
   const [dialect, setDialect] = React.useState<Dialect>('duckdb');
@@ -278,6 +283,8 @@ export function SqlPanel({ analysis }: { analysis: Analysis }) {
     setResult(null);
     setError(null);
     setActiveRecipe(opening ? opening.id : null);
+    setSample(null);
+    setSampleError(null);
   }, [table, recipes]);
 
   const ported = React.useMemo(() => translate(sql, dialect), [sql, dialect]);
@@ -296,6 +303,33 @@ export function SqlPanel({ analysis }: { analysis: Analysis }) {
       setBusy(false);
     }
   }, [runnable, sql, busy]);
+
+  const loadSample = React.useCallback(async () => {
+    if (!demoKey || loadingSample) return;
+    setLoadingSample(true);
+    setSampleError(null);
+    try {
+      const [{ fetchSample }, { loadSampleTable }] = await Promise.all([
+        import('@/lib/data'),
+        import('@/lib/engine/sample'),
+      ]);
+      const rows = await fetchSample(demoKey);
+      if (!rows.length) {
+        throw new Error(
+          'No sample rows were published for this dataset. Upload a CSV to run SQL here.',
+        );
+      }
+      const loaded = await loadSampleTable(table, rows);
+      setSample({ rows: loaded.rows, columns: loaded.columns.length });
+      setResult(null);
+      setError(null);
+    } catch (e) {
+      setSample(null);
+      setSampleError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoadingSample(false);
+    }
+  }, [demoKey, loadingSample, table]);
 
   const copy = React.useCallback(() => {
     const clip = typeof navigator === 'undefined' ? undefined : navigator.clipboard;
@@ -325,7 +359,19 @@ export function SqlPanel({ analysis }: { analysis: Analysis }) {
             {runnable ? 'Query the analysed table' : 'Warehouse SQL for this dataset'}
           </h2>
           <p className="mt-1.5 max-w-2xl text-[13px] leading-relaxed text-muted">
-            {runnable ? (
+            {sample !== null ? (
+              <>
+                Executed by DuckDB-WASM inside this tab against a{' '}
+                <strong className="font-medium text-fg">
+                  {sample.rows.toLocaleString('en-GB')}-row sample
+                </strong>{' '}
+                of <code className="rounded bg-elevated px-1.5 py-0.5 text-[12px]">{table}</code>.
+                The dashboard above was computed over all{' '}
+                {analysis.rows ? analysis.rows.toLocaleString('en-GB') : 'source'} rows, so totals
+                here are smaller by construction - shares and shapes still hold. Upload the full
+                file to reconcile exactly.
+              </>
+            ) : runnable ? (
               <>
                 Executed by DuckDB-WASM inside this tab against{' '}
                 <code className="rounded bg-elevated px-1.5 py-0.5 text-[12px]">{table}</code>, so
@@ -334,23 +380,37 @@ export function SqlPanel({ analysis }: { analysis: Analysis }) {
               </>
             ) : (
               <>
-                Demo datasets ship as pre-computed results, so there is no table to execute
-                against - but the query below is the real one the profiler writes for these
-                columns. Switch dialect to port it, or upload a CSV to run it on DuckDB-WASM.
+                This analysis was pre-computed over all{' '}
+                {analysis.rows ? analysis.rows.toLocaleString('en-GB') : 'source'} rows, which are
+                never shipped to your browser - but a sample of the real rows is. Load it to run
+                the query below on DuckDB-WASM, switch dialect to port it, or upload your own file.
               </>
             )}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void run()}
-          disabled={busy || !runnable}
-          title={runnable ? undefined : 'Upload a dataset to execute SQL'}
-          className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-accent px-4 text-[13px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-        >
-          <Play className="h-4 w-4" aria-hidden />
-          {busy ? 'Running' : 'Run query'}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {demoKey && sample === null ? (
+            <button
+              type="button"
+              onClick={() => void loadSample()}
+              disabled={loadingSample}
+              className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-line px-4 text-[13px] font-medium transition-colors hover:bg-elevated disabled:opacity-60"
+            >
+              <TableProperties className="h-4 w-4" aria-hidden />
+              {loadingSample ? 'Loading sample' : 'Load sample to run'}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => void run()}
+            disabled={busy || !runnable}
+            title={runnable ? undefined : 'Load the sample, or upload a file, to execute SQL'}
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-accent px-4 text-[13px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+          >
+            <Play className="h-4 w-4" aria-hidden />
+            {busy ? 'Running' : 'Run query'}
+          </button>
+        </div>
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -445,8 +505,15 @@ export function SqlPanel({ analysis }: { analysis: Analysis }) {
         className="mt-4 w-full resize-y rounded-xl border border-line bg-elevated p-3 font-mono text-[13px] leading-relaxed outline-none focus-visible:ring-2 focus-visible:ring-accent"
       />
       <p className="mt-1.5 text-[12px] text-muted">
-        {runnable ? 'Press Ctrl/Cmd + Enter to run.' : 'Editable - the translation below updates as you type.'}
+        {runnable
+          ? 'Press Ctrl/Cmd + Enter to run.'
+          : 'Editable - the translation below updates as you type.'}
       </p>
+      {sampleError ? (
+        <p role="alert" className="mt-1.5 text-[12px] text-negative">
+          {sampleError}
+        </p>
+      ) : null}
 
       {dialect !== 'duckdb' ? (
         <div className="mt-4 rounded-xl border border-line bg-elevated/50 p-3">
