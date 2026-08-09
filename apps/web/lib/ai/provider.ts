@@ -67,11 +67,19 @@ export class NullProvider implements AIProvider {
  * Resolve the configured provider. Returns NullProvider whenever AI is off, no key is present,
  * or the provider id is unknown — guaranteeing the deterministic path is never blocked.
  */
+/**
+ * Providers that run on the user's own machine and therefore have no API key to
+ * check. Kept here rather than imported from the registry so this module stays
+ * free of runtime dependencies on any vendor.
+ */
+const KEYLESS_PROVIDERS = new Set(["ollama"]);
+
 export function resolveProvider(
   settings: AISettings,
   registry: Record<string, (s: AISettings) => AIProvider>,
 ): AIProvider {
-  if (!settings.enabled || !settings.apiKey) return new NullProvider();
+  if (!settings.enabled) return new NullProvider();
+  if (!settings.apiKey && !KEYLESS_PROVIDERS.has(settings.providerId)) return new NullProvider();
   const factory = registry[settings.providerId];
   if (!factory) return new NullProvider();
   try {

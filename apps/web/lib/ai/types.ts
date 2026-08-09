@@ -29,6 +29,12 @@ export interface GroundedContext {
   focus: ContextFocus;
   facts: GroundedFact[];
   provenance: string[];
+  /**
+   * Every column the profiler actually discovered. Strict grounding uses this to
+   * say *which* column a suppressed question asked for, instead of a generic
+   * refusal. Selection only - copied verbatim from the dataset schema.
+   */
+  availableColumns?: string[];
   confidenceNotes?: string[];
   /** States that privacy masking was already applied upstream. */
   redactionNote: string;
@@ -223,6 +229,12 @@ export interface AISettings {
   strictInvestigationMode: boolean;
   /** Browser-only. NEVER committed or bundled. */
   apiKey?: string;
+  /**
+   * Overrides the provider's default endpoint. Required in practice for local
+   * runtimes (Ollama on a non-default port) and useful for corporate gateways.
+   * Empty/absent means "use the vendor default".
+   */
+  baseUrl?: string;
 }
 
 /**

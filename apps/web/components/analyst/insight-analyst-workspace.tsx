@@ -34,7 +34,7 @@ import {
   type InvestigationResponse,
 } from '@/lib/ai';
 import type { AnalysisLike } from '@/lib/ai/context';
-import { testGroqConnection } from '@/lib/ai/providers/groq';
+import { testConnection, providerNeedsKey } from '@/lib/ai/connection';
 import { InvestigationGraphView } from './investigation-graph-view';
 import { InvestigationResponseCard } from './investigation-response-card';
 import { Card, CardHeader, CardTitle, CardSubtitle, CardBody, Badge } from '@/components/ui/primitives';
@@ -76,7 +76,8 @@ export function InsightAnalystWorkspace({
       setReadiness({ state: 'not_ready', reason: 'AI is disabled. Enable AI in AI Settings first.' });
       return;
     }
-    if (!s.apiKey) {
+    // A local runtime (Ollama) authenticates by being reachable, so it has no key to check.
+    if (!s.apiKey && providerNeedsKey(s.providerId)) {
       setReadiness({ state: 'not_ready', reason: 'No API key. Add your provider API key in AI Settings.' });
       return;
     }
@@ -86,7 +87,7 @@ export function InsightAnalystWorkspace({
     }
     setValidating(true);
     try {
-      const result = await testGroqConnection(s);
+      const result = await testConnection(s);
       if (result.state === 'connected') {
         setReadiness({ state: 'ready' });
       } else if (result.state === 'invalid_model') {
@@ -110,7 +111,7 @@ export function InsightAnalystWorkspace({
   React.useEffect(() => {
     const s = loadAISettings();
     setEnabled(s.enabled);
-    setHasKey(Boolean(s.apiKey));
+    setHasKey(Boolean(s.apiKey) || !providerNeedsKey(s.providerId));
     if (!s.enabled) return;
     // A new investigation starts from a clean slate: drop prior conversation memory so
     // follow-up context never leaks across investigations.
