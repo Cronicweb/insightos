@@ -1,12 +1,66 @@
 'use client';
 
 import * as React from 'react';
-import { Upload, ShieldCheck, X, Loader2, FileWarning } from 'lucide-react';
+import { Upload, ShieldCheck, X, Loader2, FileWarning, ClipboardPaste, Link2 } from 'lucide-react';
 import type { Analysis } from '@/lib/types';
 import { Badge } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
 
 const ACCEPT = '.csv,.tsv,.txt,.xlsx,.xlsm,.json,.ndjson,.parquet,.pq';
+
+type Source = 'file' | 'paste' | 'url';
+
+const SOURCES: { id: Source; label: string; icon: typeof Upload }[] = [
+  { id: 'file', label: 'File', icon: Upload },
+  { id: 'paste', label: 'Paste', icon: ClipboardPaste },
+  { id: 'url', label: 'URL', icon: Link2 },
+];
+
+/**
+ * Pasted text has no file name, so the extension - which is what the ingest
+ * layer keys its reader off - is inferred from the text itself. Delimiter
+ * sniffing still happens inside DuckDB; this only has to pick the right reader.
+ */
+function nameForPastedText(text: string): string {
+  const trimmed = text.trimStart();
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) return 'pasted-data.json';
+  const firstLine = trimmed.split(/\r?\n/, 1)[0] ?? '';
+  const tabs = (firstLine.match(/\t/g) ?? []).length;
+  const commas = (firstLine.match(/,/g) ?? []).length;
+  const semis = (firstLine.match(/;/g) ?? []).length;
+  if (tabs > commas && tabs > semis) return 'pasted-data.tsv';
+  return 'pasted-data.csv';
+}
+
+const CONTENT_TYPE_EXTENSION: [RegExp, string][] = [
+  [/parquet/i, '.parquet'],
+  [/(spreadsheetml|ms-excel)/i, '.xlsx'],
+  [/(ndjson|x-jsonlines)/i, '.ndjson'],
+  [/json/i, '.json'],
+  [/(tab-separated|tsv)/i, '.tsv'],
+  [/(csv|text\/plain)/i, '.csv'],
+];
+
+/**
+ * A URL rarely ends in a tidy file name, so the last path segment is used when
+ * it already carries a known extension and the response Content-Type is the
+ * fallback. Anything else is rejected loudly rather than guessed at.
+ */
+function nameForRemote(url: string, contentType: string | null): string | null {
+  let lastSegment = '';
+  try {
+    lastSegment = decodeURIComponent(new URL(url).pathname.split('/').filter(Boolean).pop() ?? '');
+  } catch {
+    lastSegment = '';
+  }
+  const cleaned = lastSegment.replace(/[^a-zA-Z0-9._-]/g, '_');
+  if (/\.(csv|tsv|txt|xlsx|xlsm|json|ndjson|parquet|pq)$/i.test(cleaned)) return cleaned;
+
+  const match = CONTENT_TYPE_EXTENSION.find(([pattern]) => pattern.test(contentType ?? ''));
+  if (!match) return null;
+  const base = cleaned.replace(/\.[^.]+$/, '') || 'remote-dataset';
+  return `${base}${match[1]}`;
+}
 
 export function UploadDialog({
   open,
@@ -20,6 +74,9 @@ export function UploadDialog({
   const [stage, setStage] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [dragging, setDragging] = React.useState(false);
+  const [source, setSource] = React.useState<Source>('file');
+  const [pasted, setPasted] = React.useState('');
+  const [url, setUrl] = React.useState('');
   const inputRef = React.useRef<HTMLInputElement>(null);
   const busy = stage !== null;
 
@@ -56,6 +113,73 @@ export function UploadDialog({
     [onAnalysed, onClose],
   );
 
+  // Pasted text and remote responses are turned into a File and handed to the
+  // exact same ingest path as a picked file, so there is one code path to trust.
+  const handlePaste = React.useCallback(() => {
+    const text = pasted.trim();
+    if (!text) {
+      setError('Paste some delimited text or JSON first.');
+      return;
+    }
+    const name = nameForPastedText(pasted);
+    void handleFile(new File([pasted], name, { type: 'text/plain' }));
+  }, [pasted, handleFile]);
+
+  const handleUrl = React.useCallback(async () => {
+    const target = url.trim();
+    if (!target) {
+      setError('Enter the URL of a CSV, JSON, Parquet or Excel file.');
+      return;
+    }
+    let parsed: URL;
+    try {
+      parsed = new URL(target);
+    } catch {
+      setError('That is not a valid URL. Include the scheme, for example https://example.com/data.csv');
+      return;
+    }
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      setError('Only http and https URLs can be fetched from the browser.');
+      return;
+    }
+
+    setError(null);
+    setStage('Fetching the dataset');
+    let response: Response;
+    try {
+      response = await fetch(parsed.toString(), { mode: 'cors', redirect: 'follow' });
+    } catch {
+      // The fetch is made by this tab, so the host must allow cross-origin
+      // reads. There is no server to proxy through by design.
+      setStage(null);
+      setError(
+        'The browser could not fetch that URL. The host must allow cross-origin requests (CORS); InsightOS has no backend to proxy through. Download the file and use the File tab instead.',
+      );
+      return;
+    }
+    if (!response.ok) {
+      setStage(null);
+      setError(`The host responded with ${response.status} ${response.statusText || 'error'}.`);
+      return;
+    }
+
+    const name = nameForRemote(parsed.toString(), response.headers.get('content-type'));
+    if (!name) {
+      setStage(null);
+      setError(
+        'Could not tell what format that URL returns. Use a link that ends in .csv, .tsv, .json, .ndjson, .parquet, .xlsx or .xlsm.',
+      );
+      return;
+    }
+    const blob = await response.blob();
+    if (blob.size === 0) {
+      setStage(null);
+      setError('That URL returned an empty response.');
+      return;
+    }
+    void handleFile(new File([blob], name, { type: blob.type }));
+  }, [url, handleFile]);
+
   if (!open) return null;
 
   return (
@@ -72,7 +196,7 @@ export function UploadDialog({
               Analyse your own dataset
             </h2>
             <p className="mt-1 text-xs text-subtle">
-              CSV, Excel, JSON or Parquet. The full engine runs on your machine.
+              Drop a file, paste raw text or point at a URL. The full engine runs on your machine.
             </p>
           </div>
           <button
@@ -86,56 +210,142 @@ export function UploadDialog({
         </div>
 
         <div className="p-4">
-          <div
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragging(true);
-            }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragging(false);
-              const file = e.dataTransfer.files?.[0];
-              if (file && !busy) void handleFile(file);
-            }}
-            className={cn(
-              'flex flex-col items-center justify-center rounded-xl border border-dashed p-8 text-center transition-colors',
-              dragging ? 'border-accent bg-accent/[0.06]' : 'border-line bg-elevated',
-            )}
-          >
-            {busy ? (
-              <>
-                <Loader2 className="h-6 w-6 animate-spin text-accent" />
-                <p className="mt-3 text-[13px] font-semibold">{stage}</p>
-                <p className="mt-1 text-xs text-subtle">
-                  Profiling, KPI discovery, root cause, forecasting - all in this tab.
-                </p>
-              </>
-            ) : (
-              <>
-                <Upload className="h-6 w-6 text-subtle" />
-                <p className="mt-3 text-[13px] font-semibold">Drop a file here</p>
-                <p className="mt-1 text-xs text-subtle">or</p>
-                <button
-                  onClick={() => inputRef.current?.click()}
-                  className="mt-3 min-h-[44px] rounded-xl bg-accent px-4 text-[13px] font-semibold text-white hover:opacity-90"
-                >
-                  Choose a file
-                </button>
-                <input
-                  ref={inputRef}
-                  type="file"
-                  accept={ACCEPT}
-                  className="sr-only"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) void handleFile(file);
-                    e.target.value = '';
-                  }}
-                />
-              </>
-            )}
+          <div role="tablist" aria-label="Data source" className="mb-3 flex gap-1 rounded-xl border border-line bg-elevated p-1">
+            {SOURCES.map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                role="tab"
+                type="button"
+                aria-selected={source === id}
+                disabled={busy}
+                onClick={() => {
+                  setSource(id);
+                  setError(null);
+                }}
+                className={cn(
+                  'flex min-h-[36px] flex-1 items-center justify-center gap-1.5 rounded-lg px-3 text-[13px] font-semibold transition-colors disabled:opacity-40',
+                  source === id ? 'bg-surface text-ink shadow-card' : 'text-subtle hover:text-ink',
+                )}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+              </button>
+            ))}
           </div>
+
+          {busy ? (
+            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-line bg-elevated p-8 text-center">
+              <Loader2 className="h-6 w-6 animate-spin text-accent" />
+              <p className="mt-3 text-[13px] font-semibold">{stage}</p>
+              <p className="mt-1 text-xs text-subtle">
+                Profiling, KPI discovery, root cause, forecasting - all in this tab.
+              </p>
+            </div>
+          ) : source === 'file' ? (
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragging(true);
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragging(false);
+                const file = e.dataTransfer.files?.[0];
+                if (file && !busy) void handleFile(file);
+              }}
+              className={cn(
+                'flex flex-col items-center justify-center rounded-xl border border-dashed p-8 text-center transition-colors',
+                dragging ? 'border-accent bg-accent/[0.06]' : 'border-line bg-elevated',
+              )}
+            >
+              <Upload className="h-6 w-6 text-subtle" />
+              <p className="mt-3 text-[13px] font-semibold">Drop a file here</p>
+              <p className="mt-1 text-xs text-subtle">or</p>
+              <button
+                onClick={() => inputRef.current?.click()}
+                className="mt-3 min-h-[44px] rounded-xl bg-accent px-4 text-[13px] font-semibold text-white hover:opacity-90"
+              >
+                Choose a file
+              </button>
+              <input
+                ref={inputRef}
+                type="file"
+                accept={ACCEPT}
+                className="sr-only"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void handleFile(file);
+                  e.target.value = '';
+                }}
+              />
+            </div>
+          ) : source === 'paste' ? (
+            <div className="rounded-xl border border-line bg-elevated p-3">
+              <label htmlFor="upload-paste" className="text-[13px] font-semibold">
+                Paste rows of data
+              </label>
+              <p className="mt-1 text-xs text-subtle">
+                CSV, TSV, semicolon-delimited text or JSON. Keep the header row - it names the columns.
+              </p>
+              <textarea
+                id="upload-paste"
+                value={pasted}
+                onChange={(e) => setPasted(e.target.value)}
+                spellCheck={false}
+                rows={8}
+                placeholder={'order_date,region,units,revenue\n2026-01-04,North,12,480.00\n2026-01-05,South,7,265.50'}
+                className="mt-3 w-full resize-y rounded-lg border border-line bg-surface p-3 font-mono text-xs text-ink outline-none placeholder:text-subtle/70 focus:border-accent"
+              />
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <p className="text-xs text-subtle">
+                  {pasted.trim()
+                    ? `${pasted.trim().split(/\r?\n/).length.toLocaleString()} lines`
+                    : 'Nothing pasted yet'}
+                </p>
+                <button
+                  type="button"
+                  onClick={handlePaste}
+                  disabled={!pasted.trim()}
+                  className="min-h-[44px] rounded-xl bg-accent px-4 text-[13px] font-semibold text-white hover:opacity-90 disabled:opacity-40"
+                >
+                  Analyse pasted data
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-line bg-elevated p-3">
+              <label htmlFor="upload-url" className="text-[13px] font-semibold">
+                Fetch from a URL
+              </label>
+              <p className="mt-1 text-xs text-subtle">
+                A direct link to a .csv, .tsv, .json, .ndjson, .parquet or .xlsx file. The host must
+                allow cross-origin requests - the fetch happens in this tab, not on a server.
+              </p>
+              <input
+                id="upload-url"
+                type="url"
+                inputMode="url"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && url.trim()) void handleUrl();
+                }}
+                placeholder="https://example.com/sales.csv"
+                className="mt-3 w-full rounded-lg border border-line bg-surface p-3 text-[13px] text-ink outline-none placeholder:text-subtle/70 focus:border-accent"
+              />
+              <div className="mt-3 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => void handleUrl()}
+                  disabled={!url.trim()}
+                  className="min-h-[44px] rounded-xl bg-accent px-4 text-[13px] font-semibold text-white hover:opacity-90 disabled:opacity-40"
+                >
+                  Fetch and analyse
+                </button>
+              </div>
+            </div>
+          )}
 
           {error ? (
             <div className="mt-3 flex items-start gap-2 rounded-xl border border-negative/40 bg-negative/[0.06] p-3">
@@ -152,8 +362,9 @@ export function UploadDialog({
               </p>
               <p className="mt-1">
                 The file is parsed by DuckDB compiled to WebAssembly inside this tab. There is no
-                upload, no server call and no storage - closing the tab destroys every byte. Columns
-                that look like identifiers are detected and masked before anything is displayed.
+                upload, no server call and no storage - closing the tab destroys every byte. A URL you
+                supply is fetched by this tab directly and never sent anywhere else. Columns that look
+                like identifiers are detected and masked before anything is displayed.
               </p>
             </div>
           </div>
