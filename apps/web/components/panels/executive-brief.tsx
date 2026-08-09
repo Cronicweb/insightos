@@ -6,6 +6,7 @@ import type { Analysis } from '@/lib/types';
 import type { WorkspaceTab } from '../top-nav';
 import { fixed, formatSignedPct, formatValue, titleCase } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { ExportToolbar } from '../export/export-toolbar';
 
 /**
  * The first thing anyone sees.
@@ -82,8 +83,9 @@ export function ExecutiveBrief({
           {analysis.report.period}
           {analysis.report.comparison ? ` vs ${analysis.report.comparison}` : ''}
         </span>
+        <ExportToolbar analysis={analysis} label="executive-brief" className="ml-auto" />
         {confidence != null ? (
-          <span className="ml-auto flex items-center gap-2">
+          <span className="flex items-center gap-2">
             <span className="text-2xs text-subtle">Confidence</span>
             <span className="h-1.5 w-16 overflow-hidden rounded-full bg-elevated">
               <span

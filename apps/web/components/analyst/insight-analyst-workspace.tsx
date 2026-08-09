@@ -35,6 +35,7 @@ import {
 } from '@/lib/ai';
 import type { AnalysisLike } from '@/lib/ai/context';
 import { testConnection, providerNeedsKey } from '@/lib/ai/connection';
+import { QuestionChips } from './question-chips';
 import { InvestigationGraphView } from './investigation-graph-view';
 import { InvestigationResponseCard } from './investigation-response-card';
 import { Card, CardHeader, CardTitle, CardSubtitle, CardBody, Badge } from '@/components/ui/primitives';
@@ -290,6 +291,13 @@ export function InsightAnalystWorkspace({
           onExport={doExport}
         />
         <div className="space-y-3">
+          {/* Schema-derived suggestions: every chip names only columns that exist,
+              so a click can never trip Strict Grounding. */}
+          <QuestionChips
+            schema={analysis?.schema}
+            disabled={!ready || Boolean(pendingId)}
+            onPick={setQuestion}
+          />
           <div className="flex flex-wrap items-center gap-2">
             <input
               value={question}
