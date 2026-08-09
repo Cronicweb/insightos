@@ -94,6 +94,20 @@ def _summary_of(key: str, dataset: Any, result: Any) -> dict[str, Any]:
     }
 
 
+def _systematic_sample(frame: "pd.DataFrame", n: int) -> "pd.DataFrame":
+    """Return at most ``n`` rows spread evenly across ``frame``.
+
+    Preserves original row order and the full range of any date column, which
+    is what makes the published ``{key}.sample.json`` usable for the in-browser
+    SQL console (period-over-period recipes need more than one period).
+    """
+    if n <= 0 or len(frame) <= n:
+        return frame
+    step = len(frame) / n
+    idx = [int(i * step) for i in range(n)]
+    return frame.iloc[idx]
+
+
 # --------------------------------------------------------------------------- #
 def cmd_demo_build(args: argparse.Namespace) -> int:
     from .demo import generate
@@ -126,7 +140,11 @@ def cmd_demo_build(args: argparse.Namespace) -> int:
         total_bytes += _write_json(out / f"{key}.json", payload, minify=not args.pretty)
 
         if args.with_data:
-            sample = dataset.frame.head(args.sample_rows)
+            # Take an evenly spaced slice rather than the first N rows. The demo
+            # frames are ordered by date, so `head()` would hand the browser a
+            # single day and every time-series query in the SQL console would
+            # collapse to one period. A systematic sample keeps the full span.
+            sample = _systematic_sample(dataset.frame, args.sample_rows)
             _write_json(out / f"{key}.sample.json",
                         json.loads(sample.to_json(orient="records", date_format="iso")),
                         minify=not args.pretty)
