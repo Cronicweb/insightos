@@ -24,10 +24,11 @@ import { fixed, formatInt, formatPct, titleCase } from '@/lib/format';
 import { UploadDialog } from '@/components/upload/upload-dialog';
 import { LandingPage } from '@/components/landing/landing-page';
 import { MobileNav } from '@/components/mobile-nav';
-import { AlertCircle, Download, Printer, Upload } from 'lucide-react';
+import { AlertCircle, Compass, Download, Printer, Upload } from 'lucide-react';
 import { modeNotice, resolveMode } from '@/lib/mode-copy';
 import { InsightAnalystWorkspace } from '@/components/analyst/insight-analyst-workspace';
 import { SemanticReviewDialog } from '@/components/semantic/semantic-review-dialog';
+import { ProductTour, useProductTour } from '@/components/onboarding/product-tour';
 import {
   AnalystFacade,
   loadAISettings,
@@ -92,6 +93,7 @@ export default function Page() {
   const [loading, setLoading] = React.useState(true);
   const [navOpen, setNavOpen] = React.useState(false);
   const [uploadOpen, setUploadOpen] = React.useState(false);
+  const tour = useProductTour();
   // An uploaded dataset is held only in memory; it is never added to the demo index.
   const [uploaded, setUploaded] = React.useState<{ label: string; analysis: Analysis } | null>(null);
   // The landing page is the default surface; the workspace mounts once a
@@ -272,6 +274,14 @@ export default function Page() {
               <Upload className="h-4 w-4" />
               Upload dataset
             </button>
+            <button
+              onClick={tour.reopen}
+              title="How to read this workspace"
+              className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-line bg-surface px-3 text-[13px] font-semibold hover:bg-elevated"
+            >
+              <Compass className="h-4 w-4" />
+              How it works
+            </button>
             {uploaded ? (
               <>
                 <Badge tone="accent">Analysed locally: {uploaded.label}</Badge>
@@ -324,6 +334,8 @@ export default function Page() {
           }}
         />
       ) : null}
+
+      <ProductTour open={tour.open} onClose={tour.close} />
 
       <MobileNav tab={tab} onTabChange={setTab} />
     </div>
@@ -384,7 +396,7 @@ function Workspace({
         {analysis.root_causes.length ? (
           analysis.root_causes.map((tree, i) => (
             <div key={tree.metric} className="space-y-4">
-              <RootCausePanel tree={tree} />
+              <RootCausePanel tree={tree} analysis={analysis} />
               {waterfalls[i] ? <ChartRenderer spec={waterfalls[i]} height={280} /> : null}
             </div>
           ))
