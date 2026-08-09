@@ -6,6 +6,8 @@ import type { RootCauseNode, RootCauseTree, Unit } from '@/lib/types';
 import { fixed, formatExact, formatPValue, formatPct, formatSignedPct, formatValue, titleCase } from '@/lib/format';
 import { Badge, SectionLabel } from '../ui/primitives';
 import { ROLE_STYLE, cn } from '@/lib/utils';
+import { ExportToolbar } from '../export/export-toolbar';
+import type { Analysis } from '@/lib/types';
 
 /**
  * The explainable root-cause tree.
@@ -15,11 +17,13 @@ import { ROLE_STYLE, cn } from '@/lib/utils';
  * corrected p-value. The panel deliberately also shows what was *ruled out* -
  * an explanation you cannot falsify is not an explanation.
  */
-export function RootCausePanel({ tree }: { tree: RootCauseTree }) {
+export function RootCausePanel({ tree, analysis }: { tree: RootCauseTree; analysis?: Analysis }) {
   const unit = tree.unit as Unit;
+  // Scoped to this panel so the PNG export takes this tree's charts, not the page's.
+  const panelRef = React.useRef<HTMLDivElement>(null);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" ref={panelRef}>
       <div className="rounded-2xl border border-line bg-surface shadow-card">
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-line p-5">
           <div className="min-w-0">
@@ -28,6 +32,9 @@ export function RootCausePanel({ tree }: { tree: RootCauseTree }) {
               <SectionLabel>Root cause &middot; {tree.metric_label}</SectionLabel>
             </div>
             <h3 className="mt-2 text-lg font-semibold tracking-tight">{tree.headline}</h3>
+            {analysis ? (
+              <ExportToolbar analysis={analysis} targetRef={panelRef} label="root-cause" showPng={false} className="mt-2" />
+            ) : null}
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <Badge
                 tone={
