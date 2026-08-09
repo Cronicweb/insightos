@@ -145,23 +145,65 @@ export function analysisToCsv(analysis: Analysis): string {
   return toCsv(analysisToRows(analysis));
 }
 
-function slug(text: string): string {
+/** Rows -> RFC4180 CSV. Exported so query results can reuse the same quoting. */
+export function rowsToCsv(rows: (string | number | null)[][]): string {
+  return toCsv(rows);
+}
+
+/**
+ * Trigger a browser download for text content.
+ *
+ * Shared by every export in the product so there is one place that knows about
+ * object-URL lifetime - revoking too early cancels the download in some browsers.
+ */
+export function downloadText(fileName: string, content: string, mime: string): void {
+  if (typeof window === 'undefined') return;
+  const blob = new Blob([content], { type: mime });
+  downloadUrl(fileName, URL.createObjectURL(blob), true);
+}
+
+export function downloadUrl(fileName: string, url: string, revoke = false): void {
+  if (typeof window === 'undefined') return;
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  if (revoke) window.setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+/** Exported so panels can name their downloads after the dataset. */
+export function slug(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'analysis';
 }
 
 export function downloadAnalysisCsv(analysis: Analysis): void {
-  if (typeof window === 'undefined') return;
   // The BOM keeps Excel from mangling non-ASCII product descriptions.
-  const blob = new Blob(['\uFEFF', analysisToCsv(analysis)], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `insightos-${slug(analysis.dataset)}-${new Date().toISOString().slice(0, 10)}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  // Revoking immediately can cancel the download in some browsers.
-  window.setTimeout(() => URL.revokeObjectURL(url), 2000);
+  downloadText(
+    `insightos-${slug(analysis.dataset)}-${new Date().toISOString().slice(0, 10)}.csv`,
+    `\uFEFF${analysisToCsv(analysis)}`,
+    'text/csv;charset=utf-8;',
+  );
+}
+
+/** A tidy CSV of one query result or one table, not the whole analysis. */
+export function downloadRowsCsv(
+  fileName: string,
+  columns: string[],
+  rows: Array<Record<string, unknown>>,
+): void {
+  const body = rows.map((r) =>
+    columns.map((c) => {
+      const v = r[c];
+      if (v === null || v === undefined) return null;
+      if (typeof v === 'number' || typeof v === 'string') return v;
+      if (typeof v === 'bigint') return v.toString();
+      if (v instanceof Date) return v.toISOString();
+      return String(v);
+    }),
+  );
+  downloadText(fileName, `\uFEFF${toCsv([columns, ...body])}`, 'text/csv;charset=utf-8;');
 }
 
 export function printReport(): void {

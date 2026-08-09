@@ -384,7 +384,7 @@ function Workspace({
         {analysis.root_causes.length ? (
           analysis.root_causes.map((tree, i) => (
             <div key={tree.metric} className="space-y-4">
-              <RootCausePanel tree={tree} />
+              <RootCausePanel tree={tree} analysis={analysis} />
               {waterfalls[i] ? <ChartRenderer spec={waterfalls[i]} height={280} /> : null}
             </div>
           ))

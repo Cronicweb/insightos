@@ -1,10 +1,11 @@
 'use client';
 
 import * as React from 'react';
-import { Play, Database, TriangleAlert, Copy, Check, Languages } from 'lucide-react';
+import { Play, Database, TriangleAlert, Copy, Check, Languages, Download } from 'lucide-react';
 import { SectionLabel } from '@/components/ui/primitives';
 import type { Analysis, DatasetSchema } from '@/lib/types';
 import { DIALECTS, translate, type Dialect } from '@/lib/sql-dialect';
+import { downloadRowsCsv } from '@/lib/export/report-export';
 
 interface SqlResult {
   columns: string[];
@@ -504,6 +505,16 @@ export function SqlPanel({ analysis }: { analysis: Analysis }) {
               {result.durationMs} ms
             </span>
             {result.truncated ? <span>- showing the first {result.rows.length}</span> : null}
+            <button
+              type="button"
+              onClick={() =>
+                downloadRowsCsv(`${table}-query`, result.columns, result.rows)
+              }
+              className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1.5 text-[12px] text-muted transition-colors hover:text-fg"
+            >
+              <Download className="h-3.5 w-3.5" aria-hidden />
+              Download results as CSV
+            </button>
           </div>
           <div className="mt-2 max-h-[420px] overflow-auto rounded-xl border border-line">
             <table className="w-full border-collapse text-[13px]">
