@@ -1,10 +1,53 @@
 'use client';
 
 import * as React from 'react';
-import { Upload, ShieldCheck, X, Loader2, FileWarning, ClipboardPaste, Link2 } from 'lucide-react';
+import {
+  Upload,
+  ShieldCheck,
+  X,
+  Loader2,
+  FileWarning,
+  ClipboardPaste,
+  Link2,
+  ArrowLeft,
+  Table2,
+} from 'lucide-react';
 import type { Analysis } from '@/lib/types';
 import { Badge } from '@/components/ui/primitives';
 import { cn } from '@/lib/utils';
+import {
+  COLUMN_TYPES,
+  DELIMITERS,
+  isPreviewable,
+  optionsFromPreview,
+  previewText,
+  readHead,
+  type PreviewResult,
+} from '@/lib/engine/preview';
+import type { ColumnTypeOverride, IngestOptions } from '@/lib/engine/ingest';
+
+/** Everything needed to re-run the preview without touching the file again. */
+interface PendingPreview {
+  file: File;
+  /** Head of the file, decoded once. */
+  text: string;
+  result: PreviewResult;
+  overrides: Record<string, ColumnTypeOverride>;
+}
+
+const KIND_LABEL: Record<PreviewResult['columns'][number]['kind'], string> = {
+  numeric: 'Numeric',
+  temporal: 'Date / time',
+  boolean: 'Boolean',
+  categorical: 'Categorical',
+};
+
+const KIND_TONE: Record<PreviewResult['columns'][number]['kind'], string> = {
+  numeric: 'text-accent',
+  temporal: 'text-positive',
+  boolean: 'text-warning',
+  categorical: 'text-subtle',
+};
 
 const ACCEPT = '.csv,.tsv,.txt,.xlsx,.xlsm,.json,.ndjson,.parquet,.pq';
 
@@ -76,6 +119,7 @@ export function UploadDialog({
   const [dragging, setDragging] = React.useState(false);
   const [source, setSource] = React.useState<Source>('file');
   const [pasted, setPasted] = React.useState('');
+  const [pending, setPending] = React.useState<PendingPreview | null>(null);
   const [url, setUrl] = React.useState('');
   const inputRef = React.useRef<HTMLInputElement>(null);
   const busy = stage !== null;
@@ -90,8 +134,9 @@ export function UploadDialog({
   }, [open, busy, onClose]);
 
   const handleFile = React.useCallback(
-    async (file: File) => {
+    async (file: File, options?: IngestOptions) => {
       setError(null);
+      setPending(null);
       setStage('Preparing');
       try {
         // Loaded on demand so the 18 MB WASM runtime never touches the
@@ -100,7 +145,7 @@ export function UploadDialog({
           import('@/lib/engine/ingest'),
           import('@/lib/engine'),
         ]);
-        const ingest = await ingestFile(file, setStage);
+        const ingest = await ingestFile(file, setStage, options);
         const analysis = await analyseInBrowser(ingest, setStage);
         onAnalysed(analysis, file.name);
         setStage(null);
@@ -113,6 +158,58 @@ export function UploadDialog({
     [onAnalysed, onClose],
   );
 
+  /**
+   * Delimited files get a preview step first: a wrong delimiter or a title row
+   * above the header silently produces one giant text column, and the only
+   * moment that is cheap to fix is before the table is built.
+   *
+   * Formats that carry their own schema (JSON, Parquet, xlsx) have nothing to
+   * preview, so they go straight to ingest exactly as before.
+   */
+  const startFile = React.useCallback(
+    async (file: File) => {
+      setError(null);
+      if (!isPreviewable(file.name)) {
+        void handleFile(file);
+        return;
+      }
+      try {
+        const text = await readHead(file);
+        const result = previewText(text);
+        if (result.columns.length === 0) {
+          void handleFile(file);
+          return;
+        }
+        setPending({ file, text, result, overrides: {} });
+      } catch {
+        // A preview is a convenience, never a gate: fall back to direct ingest.
+        void handleFile(file);
+      }
+    },
+    [handleFile],
+  );
+
+  /** Re-parse the same text with changed settings - no file access needed. */
+  const repreview = React.useCallback(
+    (patch: { delimiter?: string; header?: boolean; skipRows?: number }) => {
+      setPending((prev) => {
+        if (!prev) return prev;
+        const next = previewText(prev.text, {
+          delimiter: patch.delimiter ?? prev.result.delimiter,
+          header: patch.header ?? prev.result.header,
+          skipRows: patch.skipRows ?? prev.result.skipRows,
+        });
+        // Overrides are keyed by column name, which a re-parse can change.
+        const names = new Set(next.columns.map((c) => c.name));
+        const overrides = Object.fromEntries(
+          Object.entries(prev.overrides).filter(([k]) => names.has(k)),
+        ) as Record<string, ColumnTypeOverride>;
+        return { ...prev, result: next, overrides };
+      });
+    },
+    [],
+  );
+
   // Pasted text and remote responses are turned into a File and handed to the
   // exact same ingest path as a picked file, so there is one code path to trust.
   const handlePaste = React.useCallback(() => {
@@ -122,8 +219,8 @@ export function UploadDialog({
       return;
     }
     const name = nameForPastedText(pasted);
-    void handleFile(new File([pasted], name, { type: 'text/plain' }));
-  }, [pasted, handleFile]);
+    void startFile(new File([pasted], name, { type: 'text/plain' }));
+  }, [pasted, startFile]);
 
   const handleUrl = React.useCallback(async () => {
     const target = url.trim();
@@ -177,8 +274,9 @@ export function UploadDialog({
       setError('That URL returned an empty response.');
       return;
     }
-    void handleFile(new File([blob], name, { type: blob.type }));
-  }, [url, handleFile]);
+    setStage(null);
+    void startFile(new File([blob], name, { type: blob.type }));
+  }, [url, startFile]);
 
   if (!open) return null;
 
@@ -210,6 +308,7 @@ export function UploadDialog({
         </div>
 
         <div className="p-4">
+          {pending || busy ? null : (
           <div role="tablist" aria-label="Data source" className="mb-3 flex gap-1 rounded-xl border border-line bg-elevated p-1">
             {SOURCES.map(({ id, label, icon: Icon }) => (
               <button
@@ -232,6 +331,7 @@ export function UploadDialog({
               </button>
             ))}
           </div>
+          )}
 
           {busy ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-line bg-elevated p-8 text-center">
@@ -240,6 +340,153 @@ export function UploadDialog({
               <p className="mt-1 text-xs text-subtle">
                 Profiling, KPI discovery, root cause, forecasting - all in this tab.
               </p>
+            </div>
+          ) : pending ? (
+            <div className="rounded-xl border border-line bg-elevated p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="flex items-center gap-1.5 text-[13px] font-semibold">
+                    <Table2 className="h-3.5 w-3.5 text-accent" aria-hidden />
+                    Check the parse before analysing
+                  </p>
+                  <p className="mt-1 text-xs text-subtle">
+                    {pending.file.name} &middot; {pending.result.columns.length} columns detected
+                    {pending.result.truncated ? ' from the first 256 KB' : ''}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPending(null)}
+                  className="flex items-center gap-1 rounded-lg border border-line px-2 py-1.5 text-xs text-subtle hover:bg-surface"
+                >
+                  <ArrowLeft className="h-3 w-3" aria-hidden />
+                  Back
+                </button>
+              </div>
+
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <div>
+                  <label htmlFor="preview-delimiter" className="text-2xs font-semibold uppercase tracking-[0.08em] text-subtle">
+                    Delimiter
+                  </label>
+                  <select
+                    id="preview-delimiter"
+                    value={pending.result.delimiter}
+                    onChange={(e) => repreview({ delimiter: e.target.value })}
+                    className="mt-1 w-full rounded-lg border border-line bg-surface p-2 text-[13px] text-ink outline-none focus:border-accent"
+                  >
+                    {DELIMITERS.map((d) => (
+                      <option key={d.value} value={d.value}>
+                        {d.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="preview-skip" className="text-2xs font-semibold uppercase tracking-[0.08em] text-subtle">
+                    Skip leading rows
+                  </label>
+                  <input
+                    id="preview-skip"
+                    type="number"
+                    min={0}
+                    max={50}
+                    value={pending.result.skipRows}
+                    onChange={(e) => repreview({ skipRows: Math.max(0, Number(e.target.value) || 0) })}
+                    className="mt-1 w-full rounded-lg border border-line bg-surface p-2 text-[13px] text-ink outline-none focus:border-accent"
+                  />
+                </div>
+                <div className="flex items-end">
+                  <label className="flex min-h-[38px] w-full cursor-pointer items-center gap-2 rounded-lg border border-line bg-surface px-2 text-[13px]">
+                    <input
+                      type="checkbox"
+                      checked={pending.result.header}
+                      onChange={(e) => repreview({ header: e.target.checked })}
+                      className="h-4 w-4 accent-accent"
+                    />
+                    First row is the header
+                  </label>
+                </div>
+              </div>
+
+              {pending.result.warnings.length > 0 ? (
+                <ul className="mt-2 space-y-1">
+                  {pending.result.warnings.map((warning) => (
+                    <li key={warning} className="text-xs text-warning">
+                      {warning}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+
+              <div className="mt-3 max-h-56 overflow-auto rounded-lg border border-line bg-surface">
+                <table className="w-full border-collapse text-left text-xs">
+                  <thead className="sticky top-0 bg-surface">
+                    <tr className="border-b border-line">
+                      <th className="p-2 font-semibold">Column</th>
+                      <th className="p-2 font-semibold">Detected</th>
+                      <th className="p-2 font-semibold">Read as</th>
+                      <th className="p-2 font-semibold">Sample</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pending.result.columns.map((col) => (
+                      <tr key={col.name} className="border-b border-line/60 last:border-0">
+                        <td className="p-2 font-medium text-ink">{col.name}</td>
+                        <td className={cn('p-2', KIND_TONE[col.kind])}>{KIND_LABEL[col.kind]}</td>
+                        <td className="p-2">
+                          <select
+                            aria-label={`Type for ${col.name}`}
+                            value={pending.overrides[col.name] ?? col.detected}
+                            onChange={(e) =>
+                              setPending((prev) =>
+                                prev
+                                  ? {
+                                      ...prev,
+                                      overrides: {
+                                        ...prev.overrides,
+                                        [col.name]: e.target.value as ColumnTypeOverride,
+                                      },
+                                    }
+                                  : prev,
+                              )
+                            }
+                            className="w-full rounded border border-line bg-elevated p-1 text-xs text-ink outline-none focus:border-accent"
+                          >
+                            {COLUMN_TYPES.map((t) => (
+                              <option key={t} value={t}>
+                                {t}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="p-2 font-mono text-subtle">
+                          {col.samples.join('  ') || '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <p className="text-xs text-subtle">
+                  {pending.result.rows.length.toLocaleString()} sample rows parsed. Types you change
+                  here are enforced when the table is built.
+                </p>
+                <button
+                  type="button"
+                  onClick={() =>
+                    void handleFile(
+                      pending.file,
+                      optionsFromPreview(pending.result, pending.overrides),
+                    )
+                  }
+                  className="min-h-[44px] shrink-0 rounded-xl bg-accent px-4 text-[13px] font-semibold text-white hover:opacity-90"
+                >
+                  Analyse with these settings
+                </button>
+              </div>
             </div>
           ) : source === 'file' ? (
             <div
@@ -252,7 +499,7 @@ export function UploadDialog({
                 e.preventDefault();
                 setDragging(false);
                 const file = e.dataTransfer.files?.[0];
-                if (file && !busy) void handleFile(file);
+                if (file && !busy) void startFile(file);
               }}
               className={cn(
                 'flex flex-col items-center justify-center rounded-xl border border-dashed p-8 text-center transition-colors',
@@ -275,7 +522,7 @@ export function UploadDialog({
                 className="sr-only"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
-                  if (file) void handleFile(file);
+                  if (file) void startFile(file);
                   e.target.value = '';
                 }}
               />

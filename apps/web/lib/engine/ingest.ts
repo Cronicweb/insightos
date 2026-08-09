@@ -17,6 +17,27 @@ import {
 
 export type SourceFormat = 'csv' | 'json' | 'parquet' | 'xlsx';
 
+/** A column type the user can force when the sniffer guesses wrong. */
+export type ColumnTypeOverride = 'VARCHAR' | 'DOUBLE' | 'BIGINT' | 'DATE' | 'TIMESTAMP' | 'BOOLEAN';
+
+/**
+ * Overrides collected from the pre-ingestion preview.
+ *
+ * All fields are optional and omitted values keep DuckDB's sniffer in charge,
+ * so the default path is byte-for-byte the behaviour that shipped before.
+ * Only the delimited formats (csv, and xlsx once flattened) can use these.
+ */
+export interface IngestOptions {
+  /** Field separator, e.g. ',' ';' '\t' '|'. */
+  delimiter?: string;
+  /** False when row 1 is data rather than names; DuckDB then invents column0.. */
+  header?: boolean;
+  /** Preamble lines to discard before the header row. */
+  skipRows?: number;
+  /** Per-column forced types, keyed by the detected column name. */
+  columnTypes?: Record<string, ColumnTypeOverride>;
+}
+
 export interface IngestResult {
   table: string;
   format: SourceFormat;
@@ -48,19 +69,45 @@ export function tableNameFor(fileName: string): string {
   return base ? `t_${base}`.slice(0, 48) : 't_dataset';
 }
 
-function readerFor(format: SourceFormat, virtualPath: string): string {
+/** `\t` typed into a text box arrives as two characters; DuckDB wants one. */
+function normaliseDelimiter(raw: string): string {
+  if (raw === '\\t') return '\t';
+  return raw;
+}
+
+/** Only these types are ever interpolated into SQL, so overrides cannot inject. */
+const ALLOWED_TYPES = new Set<string>(['VARCHAR', 'DOUBLE', 'BIGINT', 'DATE', 'TIMESTAMP', 'BOOLEAN']);
+
+function csvReader(virtualPath: string, options?: IngestOptions): string {
   // A bounded sample keeps type inference fast; DuckDB still falls back to
   // VARCHAR for any column it cannot resolve, so correctness is preserved.
-  if (format === 'csv') return `read_csv_auto(${lit(virtualPath)}, SAMPLE_SIZE=65536)`;
+  const args = [lit(virtualPath), 'SAMPLE_SIZE=65536'];
+  if (options?.delimiter) args.push(`delim=${lit(normaliseDelimiter(options.delimiter))}`);
+  if (options?.header !== undefined) args.push(`header=${options.header ? 'true' : 'false'}`);
+  if (options?.skipRows) args.push(`skip=${Math.max(0, Math.floor(options.skipRows))}`);
+
+  const overrides = Object.entries(options?.columnTypes ?? {}).filter(([, t]) => ALLOWED_TYPES.has(t));
+  if (overrides.length > 0) {
+    // `columns` would require naming every column; `types` by name only touches
+    // the ones the user actually overrode and leaves the rest sniffed.
+    const pairs = overrides.map(([name, type]) => `${lit(name)}: ${lit(type)}`).join(', ');
+    args.push(`types={${pairs}}`);
+  }
+  return `read_csv_auto(${args.join(', ')})`;
+}
+
+function readerFor(format: SourceFormat, virtualPath: string, options?: IngestOptions): string {
+  if (format === 'csv') return csvReader(virtualPath, options);
   if (format === 'json') return `read_json_auto(${lit(virtualPath)})`;
   if (format === 'parquet') return `read_parquet(${lit(virtualPath)})`;
   // Workbooks arrive here already transposed to CSV bytes.
-  return `read_csv_auto(${lit(virtualPath)}, SAMPLE_SIZE=65536)`;
+  return csvReader(virtualPath, options);
 }
 
 export async function ingestFile(
   file: File,
   onProgress?: (stage: string) => void,
+  options?: IngestOptions,
 ): Promise<IngestResult> {
   const started = performance.now();
   const format = detectFormat(file.name);
@@ -97,7 +144,22 @@ export async function ingestFile(
   const table = tableNameFor(file.name);
   onProgress?.('Inferring schema and building the table');
   await conn.query(`DROP TABLE IF EXISTS ${ident(table)}`);
-  await conn.query(`CREATE TABLE ${ident(table)} AS SELECT * FROM ${readerFor(format, virtualPath)}`);
+  try {
+    await conn.query(
+      `CREATE TABLE ${ident(table)} AS SELECT * FROM ${readerFor(format, virtualPath, options)}`,
+    );
+  } catch (err) {
+    // An override that the data cannot honour (say DOUBLE on a text column)
+    // should name itself rather than surface as a raw parser error.
+    const detail = err instanceof Error ? err.message : String(err);
+    const hasOverrides =
+      options && (options.delimiter || options.header !== undefined || options.skipRows || options.columnTypes);
+    throw new Error(
+      hasOverrides
+        ? `The file could not be parsed with the preview settings you chose. Adjust the delimiter, header row or column types and try again. (${detail})`
+        : detail,
+    );
+  }
 
   // The sniffer is good at ISO dates and poor at regional ones. Repair what it
   // missed before profiling runs, so a text date column still yields a time
