@@ -23,9 +23,12 @@ import sys
 import time
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from . import __version__
+
+if TYPE_CHECKING:  # pragma: no cover - resolved by linters and type checkers only
+    import pandas as pd
 
 _DEMO_KEYS = ("banking", "ecommerce", "marketing", "retail",
               "healthcare", "hr", "manufacturing")
