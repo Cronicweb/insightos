@@ -51,6 +51,15 @@ const KIND_TONE: Record<PreviewResult['columns'][number]['kind'], string> = {
 
 const ACCEPT = '.csv,.tsv,.txt,.xlsx,.xlsm,.json,.ndjson,.parquet,.pq';
 
+import {
+  classifyFetchFailure,
+  describeFetchFailure,
+  describeHttpStatus,
+  htmlResponseMessage,
+  normaliseDatasetUrl,
+  unsupportedExtensionMessage,
+} from '@/lib/ingest/remote-url';
+
 type Source = 'file' | 'paste' | 'url';
 
 const SOURCES: { id: Source; label: string; icon: typeof Upload }[] = [
@@ -121,6 +130,7 @@ export function UploadDialog({
   const [pasted, setPasted] = React.useState('');
   const [pending, setPending] = React.useState<PendingPreview | null>(null);
   const [url, setUrl] = React.useState('');
+  const rewrite = React.useMemo(() => normaliseDatasetUrl(url), [url]);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const busy = stage !== null;
 
@@ -223,11 +233,14 @@ export function UploadDialog({
   }, [pasted, startFile]);
 
   const handleUrl = React.useCallback(async () => {
-    const target = url.trim();
-    if (!target) {
+    const typed = url.trim();
+    if (!typed) {
       setError('Enter the URL of a CSV, JSON, Parquet or Excel file.');
       return;
     }
+    // Known viewer/share links are rewritten to the raw endpoint the same host
+    // serves with CORS enabled. Unknown hosts pass through untouched.
+    const target = normaliseDatasetUrl(typed).url;
     let parsed: URL;
     try {
       parsed = new URL(target);
@@ -239,6 +252,12 @@ export function UploadDialog({
       setError('Only http and https URLs can be fetched from the browser.');
       return;
     }
+    // Naming the file type beats spending a request to fail vaguely.
+    const unsupported = unsupportedExtensionMessage(target);
+    if (unsupported) {
+      setError(unsupported);
+      return;
+    }
 
     setError(null);
     setStage('Fetching the dataset');
@@ -247,16 +266,24 @@ export function UploadDialog({
       response = await fetch(parsed.toString(), { mode: 'cors', redirect: 'follow' });
     } catch {
       // The fetch is made by this tab, so the host must allow cross-origin
-      // reads. There is no server to proxy through by design.
+      // reads. There is no server to proxy through by design. A blocked read
+      // and a dead host both raise the same contentless TypeError, so probe
+      // once with mode: 'no-cors' - that request is exempt from the CORS
+      // check, so if it resolves the host is alive and merely refused to
+      // share, and if it throws too then nothing answered at all.
+      setStage('Diagnosing the failure');
+      const kind = await classifyFetchFailure(parsed.toString(), {
+        online: typeof navigator === 'undefined' ? true : navigator.onLine,
+        pageProtocol: typeof window === 'undefined' ? 'https:' : window.location.protocol,
+        probe: (probeUrl) => fetch(probeUrl, { mode: 'no-cors', redirect: 'follow' }),
+      });
       setStage(null);
-      setError(
-        'The browser could not fetch that URL. The host must allow cross-origin requests (CORS); InsightOS has no backend to proxy through. Download the file and use the File tab instead.',
-      );
+      setError(describeFetchFailure(kind, parsed.toString()));
       return;
     }
     if (!response.ok) {
       setStage(null);
-      setError(`The host responded with ${response.status} ${response.statusText || 'error'}.`);
+      setError(describeHttpStatus(response.status, response.statusText, parsed.toString()));
       return;
     }
 
@@ -272,6 +299,14 @@ export function UploadDialog({
     if (blob.size === 0) {
       setStage(null);
       setError('That URL returned an empty response.');
+      return;
+    }
+    // A 200 that is actually a sign-in or preview page otherwise fails much
+    // further downstream with a confusing parse error.
+    const htmlProblem = htmlResponseMessage(await blob.slice(0, 512).text(), parsed.toString());
+    if (htmlProblem) {
+      setStage(null);
+      setError(htmlProblem);
       return;
     }
     setStage(null);
@@ -567,7 +602,9 @@ export function UploadDialog({
               </label>
               <p className="mt-1 text-xs text-subtle">
                 A direct link to a .csv, .tsv, .json, .ndjson, .parquet or .xlsx file. The host must
-                allow cross-origin requests - the fetch happens in this tab, not on a server.
+                allow cross-origin requests - the fetch happens in this tab, not on a server. GitHub,
+                GitLab, Google Sheets, Drive and Dropbox links are rewritten to their raw endpoint
+                automatically.
               </p>
               <input
                 id="upload-url"
@@ -581,6 +618,21 @@ export function UploadDialog({
                 placeholder="https://example.com/sales.csv"
                 className="mt-3 w-full rounded-lg border border-line bg-surface p-3 text-[13px] text-ink outline-none placeholder:text-subtle/70 focus:border-accent"
               />
+              {rewrite.changed ? (
+                <div
+                  data-testid="url-rewrite-note"
+                  className="mt-3 rounded-lg border border-accent/40 bg-accent/[0.06] p-3"
+                >
+                  <p className="text-xs font-semibold text-accent">Fetching this instead</p>
+                  <p className="mt-1 break-all font-mono text-[11px] text-ink">{rewrite.url}</p>
+                  <p className="mt-1 text-xs text-subtle">{rewrite.note}</p>
+                </div>
+              ) : null}
+              <p className="mt-3 text-xs text-subtle">
+                Hosts that reliably allow this: raw.githubusercontent.com, jsDelivr, published Google
+                Sheets, most S3 and R2 buckets, and data.gov. If a host refuses, download the file and
+                use the File tab.
+              </p>
               <div className="mt-3 flex justify-end">
                 <button
                   type="button"
