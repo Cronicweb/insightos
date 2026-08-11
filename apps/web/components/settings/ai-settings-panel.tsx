@@ -12,7 +12,13 @@ import {
   type AISettings,
 } from '@/lib/ai';
 import { AVAILABLE_PROVIDERS } from '@/lib/ai/registry';
-import { testGroqConnection, type ConnectionResult, type ConnectionState } from '@/lib/ai/providers/groq';
+import type { ConnectionResult, ConnectionState } from '@/lib/ai/providers/groq';
+import {
+  testConnection as testProviderConnection,
+  providerNeedsKey,
+  defaultBaseUrlFor,
+  baseUrlHintFor,
+} from '@/lib/ai/connection';
 import { Card, CardHeader, CardTitle, CardSubtitle, CardBody, Badge } from '@/components/ui/primitives';
 import { Eye, EyeOff, Copy, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -129,7 +135,7 @@ export function AISettingsPanel() {
     setTesting(true);
     setConn((c) => ({ ...c, state: 'connecting', provider: settings.providerId, model: settings.model }));
     try {
-      const result = await testGroqConnection(settings);
+      const result = await testProviderConnection(settings);
       setConn(result);
       // Populate the dropdown ONLY from the live list returned by the provider.
       setAvailableModels(result.availableModels ?? []);
@@ -149,6 +155,8 @@ export function AISettingsPanel() {
   }, []);
 
   const aiOff = !settings.enabled;
+  // Local runtimes (Ollama) authenticate by being reachable, so the key field is moot.
+  const needsKey = providerNeedsKey(settings.providerId);
   const hasModels = availableModels.length > 0;
   const modelInvalid = hasModels && settings.model !== '' && !availableModels.includes(settings.model);
 
@@ -232,6 +240,30 @@ export function AISettingsPanel() {
                 </option>
               ))}
             </select>
+            <p className="mt-1 text-xs text-muted">
+              {needsKey
+                ? 'Requests go straight from this browser to the provider. No InsightOS server sees your data.'
+                : 'Local runtime: the model runs on your machine, so no dataset or key leaves it. Start it with this site allowed as an origin.'}
+            </p>
+          </div>
+          <div>
+            <label htmlFor="ai-base-url" className={FIELD_LABEL}>
+              Endpoint (optional)
+            </label>
+            <input
+              id="ai-base-url"
+              type="url"
+              autoComplete="off"
+              spellCheck={false}
+              className={INPUT}
+              placeholder={defaultBaseUrlFor(settings.providerId) || 'Provider default'}
+              value={settings.baseUrl ?? ''}
+              disabled={aiOff}
+              onChange={(e) => { update({ baseUrl: e.target.value }); invalidateConn(); }}
+            />
+            <p className="mt-1 text-xs text-muted">
+              {baseUrlHintFor(settings.providerId) || 'Leave blank to use the provider default.'}
+            </p>
           </div>
           <div>
             <label htmlFor="ai-model" className={FIELD_LABEL}>
@@ -286,7 +318,7 @@ export function AISettingsPanel() {
           </div>
           <div>
             <label htmlFor="ai-key" className={FIELD_LABEL}>
-              API key (stored in this browser only)
+              {needsKey ? 'API key (stored in this browser only)' : 'API key (not required for a local runtime)'}
             </label>
             <div className="flex gap-2">
               <input
@@ -294,10 +326,10 @@ export function AISettingsPanel() {
                 type={showKey ? 'text' : 'password'}
                 autoComplete="off"
                 spellCheck={false}
-                placeholder="Paste your provider API key"
+                placeholder={needsKey ? 'Paste your provider API key' : 'Not required'}
                 className={INPUT}
                 value={settings.apiKey ?? ''}
-                disabled={aiOff}
+                disabled={aiOff || !needsKey}
                 onChange={(e) => { update({ apiKey: e.target.value }); invalidateConn(); }}
               />
               <button
@@ -365,7 +397,7 @@ export function AISettingsPanel() {
                 <button
                   type="button"
                   onClick={testConnection}
-                  disabled={aiOff || testing || !settings.apiKey}
+                  disabled={aiOff || testing || (needsKey && !settings.apiKey)}
                   className={cn(
                     'min-h-[44px] rounded-xl border border-line px-3 text-xs font-medium',
                     'focus:outline-none focus:ring-2 focus:ring-accent/50 disabled:opacity-60',

@@ -7,6 +7,7 @@ import { AreaSeries, type SeriesMode } from '../charts/area-series';
 import { Segmented, Badge } from '../ui/primitives';
 import { AreaChart, BarChart3, LineChart, Table2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { formulaTooltip } from '@/lib/kpi-formula';
 
 /**
  * The hero card: one enormous number, its period-over-period delta, the shape of
@@ -52,7 +53,13 @@ export function HeroMetric({
           </span>
         </div>
         <p className="mt-2 max-w-2xl text-xs text-muted">
-          {kpi.description} &middot; <span className="font-mono text-2xs">{kpi.formula}</span>
+          {kpi.description} &middot;{' '}
+          <span
+            className="cursor-help border-b border-dotted border-line font-mono text-2xs"
+            title={formulaTooltip(kpi)}
+          >
+            {kpi.formula}
+          </span>
         </p>
       </div>
 

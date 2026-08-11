@@ -13,6 +13,12 @@ export interface AnalysisLike {
   root_causes?: unknown[];
   recommendations?: unknown;
   quality?: { score?: number; grade?: string };
+  schema?: {
+    columns?: Array<{ name?: string }>;
+    measures?: string[];
+    dimensions?: string[];
+    time_columns?: string[];
+  };
   governance?: { decision_readiness?: string; confidence_cap?: number };
   report?: { summary?: string };
 }
@@ -62,11 +68,18 @@ export function buildContext(analysis: AnalysisLike, focus: ContextFocus): Groun
       break;
   }
 
+  // Carried so the grounding guard can name the columns a question asked for
+  // but the dataset does not have. Names only - no values, no rows.
+  const availableColumns = (analysis.schema?.columns ?? [])
+    .map((c) => c?.name)
+    .filter((n): n is string => typeof n === "string" && n.length > 0);
+
   return {
     datasetLabel: analysis.dataset ?? analysis.key ?? "dataset",
     focus,
     facts,
     provenance,
+    availableColumns: availableColumns.length ? availableColumns : undefined,
     confidenceNotes: confidenceNotes.length ? confidenceNotes : undefined,
     redactionNote: REDACTION_NOTE,
   };
