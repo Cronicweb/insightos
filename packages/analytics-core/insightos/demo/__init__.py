@@ -4,6 +4,7 @@ from .verticals import (
     generate_hr,
     generate_manufacturing,
     generate_retail,
+    generate_telesales,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "generate_healthcare",
     "generate_hr",
     "generate_manufacturing",
+    "generate_telesales",
 ]

@@ -1,4 +1,4 @@
-"""Four more demo verticals, each with a planted business truth.
+"""Five more demo verticals, each with a planted business truth.
 
 These follow the same contract as :mod:`insightos.demo.generators` - a frame, a
 machine-checkable ``ground_truth`` and a one-line story - so the same validation
@@ -17,6 +17,7 @@ __all__ = [
     "generate_healthcare",
     "generate_hr",
     "generate_manufacturing",
+    "generate_telesales",
 ]
 
 
@@ -337,4 +338,104 @@ def generate_manufacturing(seed: int = 19, months: int = 18,
         },
         story=("Output falls at one plant. The engine must attribute the loss between "
                "downtime and scrap, and tie both to a single line and supplier."),
+    )
+
+
+# --------------------------------------------------------------------------- #
+def generate_telesales(seed: int = 29, months: int = 18,
+                       end: "str | pd.Timestamp | None" = None) -> DemoDataset:
+    """Telesales and voice-AI campaign operations.
+
+    Planted truth: in the final month the outbound caller IDs in one dialing
+    pool (Pool C) are spam-flagged by the telecom carriers, so the connect rate
+    collapses for every call routed through that pool. Dial volume, calling
+    spend and the AI-agent/human-expert mix are all unchanged - the engine must
+    exonerate them and land on the pool.
+    """
+    rng = np.random.default_rng(seed)
+    periods = _months(end, months)
+    campaigns = ["Lending - Personal Loans", "Broking - Account Activation",
+                 "Insurance - Policy Renewals", "EdTech - Admissions",
+                 "E-commerce - Order Confirmation"]
+    agent_types = ["AI Voice Agent", "Human Expert"]
+    pools = ["Pool A", "Pool B", "Pool C", "Pool D"]
+    circles = ["Delhi NCR", "Mumbai", "Karnataka", "UP East", "Tamil Nadu"]
+    sources = ["Website Leads", "App Signups", "Partner API", "Aggregator"]
+
+    ticket = {"Lending - Personal Loans": 5200.0, "Broking - Account Activation": 1450.0,
+              "Insurance - Policy Renewals": 3100.0, "EdTech - Admissions": 6400.0,
+              "E-commerce - Order Confirmation": 850.0}
+    conv_mult = {"Lending - Personal Loans": 0.9, "Broking - Account Activation": 1.15,
+                 "Insurance - Policy Renewals": 1.05, "EdTech - Admissions": 0.8,
+                 "E-commerce - Order Confirmation": 1.3}
+    pool_connect = {"Pool A": 1.0, "Pool B": 0.98, "Pool C": 1.02, "Pool D": 0.96}
+    cost_per_dial = {"AI Voice Agent": 2.4, "Human Expert": 7.8}
+
+    rows = []
+    for i, day in enumerate(periods):
+        final = i == len(periods) - 1
+        season = _seasonal(np.array([i]), 12.0, 0.08)[0]
+        for camp in campaigns:
+            for pool in pools:
+                for agent in agent_types:
+                    n = int(rng.integers(35, 70))
+                    dials = rng.poisson(90 * season, n) + 20
+                    connect_p = np.clip(
+                        rng.normal(0.62 * pool_connect[pool], 0.05, n), 0.05, 0.95)
+                    if final and pool == "Pool C":
+                        connect_p = connect_p * 0.42     # planted spam-flag collapse
+                    connects = rng.binomial(dials, connect_p)
+                    qual_p = np.clip(rng.normal(0.34, 0.04, n), 0.05, 0.8)
+                    qual_p = qual_p * (0.97 if agent == "AI Voice Agent" else 1.05)
+                    qualified = rng.binomial(connects, np.clip(qual_p, 0, 1))
+                    conv_p = np.clip(rng.normal(0.24 * conv_mult[camp], 0.03, n), 0.02, 0.8)
+                    conversions = rng.binomial(qualified, conv_p)
+                    talk = connects * np.clip(rng.normal(3.6, 0.4, n), 0.5, 12)
+                    spend = dials * cost_per_dial[agent] * rng.normal(1.0, 0.05, n)
+                    revenue = conversions * ticket[camp] * rng.normal(1.0, 0.10, n)
+
+                    rows.append(pd.DataFrame({
+                        "call_date": day,
+                        "call_block_id": [f"TS-{i:02d}-{camp[:2]}{pool[-1]}{agent[:1]}-{k:05d}"
+                                          for k in range(n)],
+                        "campaign": camp,
+                        "agent_type": agent,
+                        "caller_id_pool": pool,
+                        "region": rng.choice(circles, n, p=[0.26, 0.24, 0.19, 0.17, 0.14]),
+                        "lead_source": rng.choice(sources, n, p=[0.38, 0.27, 0.22, 0.13]),
+                        "dials": dials,
+                        "connects": connects,
+                        "qualified_leads": qualified,
+                        "conversions": conversions,
+                        "talk_time_minutes": np.round(talk, 1),
+                        "qa_score": np.round(np.clip(rng.normal(88, 5, n), 60, 100), 1),
+                        "campaign_spend": np.round(spend, 2),
+                        "revenue": np.round(revenue, 2),
+                    }))
+
+    frame = pd.concat(rows, ignore_index=True)
+    return DemoDataset(
+        key="telesales",
+        name="Telesales and voice-AI operations",
+        description=("18 months of outbound calling blocks across five campaigns, four "
+                     "caller-ID pools and two agent types (AI voice agent vs human "
+                     "expert), with dials, connects, qualified leads, conversions, "
+                     "spend and attributed revenue."),
+        domain_hint="marketing",
+        frame=frame,
+        ground_truth={
+            "expected_metric": "roas",
+            "expected_direction": "down",
+            "expected_top_dimension": "caller_id_pool",
+            "expected_top_segment": "Pool C",
+            "planted_effects": [
+                "Pool C connect rate collapses ~58% in the final month (carrier spam-flagging)",
+                "Dial volume and calling spend unchanged - effort and budget are NOT the cause",
+                "AI-agent vs human-expert mix unchanged - the agent stack is NOT the cause",
+                "Conversions and revenue fall ~14% overall, entirely through Pool C",
+            ],
+        },
+        story=("Attributed revenue falls while dialing volume and spend hold steady. "
+               "The engine must exonerate budget and the AI/human agent mix, and trace "
+               "the collapse to one spam-flagged caller-ID pool."),
     )
