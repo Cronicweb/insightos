@@ -141,7 +141,6 @@ export class AnalystFacade {
     opts: { supportingCharts?: string[]; statisticalTests?: string[]; knownColumns?: string[] } = {},
   ): Promise<InvestigationResponse> {
     if (!this.graph) throw new Error('No active investigation.');
-    const settings = loadAISettings();
 
     // §28.9 — classify locally BEFORE any provider call.
     const verdict = this.classify(question);
@@ -160,8 +159,11 @@ export class AnalystFacade {
     });
 
     // §22: validate before rendering; on any violation, use deterministic fallback.
+    // Number-level grounding is no longer a hard failure: the grounding guard already annotates
+    // ungrounded figures as general knowledge so any question can be answered in reference to the
+    // data. Structural checks (invented sourcePaths/confidence/SQL columns) still hard-fail.
     const val = validateResponse(response, context, {
-      strict: settings.strictGrounding,
+      strict: false,
       knownColumns: opts.knownColumns,
     });
     if (!val.ok) {

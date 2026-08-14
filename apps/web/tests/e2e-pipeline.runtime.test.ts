@@ -106,10 +106,11 @@ describe('E2E runtime — AI request pipeline', () => {
     expect(res.confidence.level).toBe('high');
   });
 
-  it('OFF-TOPIC "Who won the FIFA World Cup?" is allowed, answered as RAG from context only', async () => {
+  it('OFF-TOPIC "Who won the FIFA World Cup?" is allowed and answered with labelled general knowledge in reference to the data', async () => {
     saveAISettings(ENABLED_GROQ);
 
-    // The model, constrained by the RAG preamble, must decline from the DATA — not refuse the user.
+    // The model may use general knowledge, but the prompt requires it to be labelled and related
+    // back to the uploaded dataset.
     const sent: any[] = [];
     const fetchMock = vi.fn(async (_url: any, init: any) => {
       sent.push(JSON.parse(init.body));
@@ -117,7 +118,7 @@ describe('E2E runtime — AI request pipeline', () => {
         ok: true,
         status: 200,
         json: async () => ({
-          choices: [{ message: { content: 'The uploaded data does not contain information about that.' } }],
+          choices: [{ message: { content: 'General knowledge: the uploaded data does not contain this; your dataset covers revenue KPIs instead.' } }],
         }),
       } as any;
     });
@@ -132,11 +133,37 @@ describe('E2E runtime — AI request pipeline', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(res.trace.provider).toBe('groq');
-    // The system prompt pins the model to the provided data only.
+    // The system prompt keeps the dataset as source of truth but allows labelled general knowledge.
     const system = sent[0].messages[0].content as string;
-    expect(system).toContain('ONLY the grounded context');
-    expect(system).toContain('NO outside knowledge');
-    expect(res.summary).toContain('does not contain');
+    expect(system).toContain('SINGLE SOURCE OF TRUTH');
+    expect(system).toContain('general knowledge');
+    expect(system).toContain('in reference to the uploaded data');
+    expect(res.summary).toContain('General knowledge:');
+  });
+
+  it('GENERAL-KNOWLEDGE figures are ANNOTATED (not suppressed) under strict grounding', async () => {
+    saveAISettings(ENABLED_GROQ);
+
+    // Provider answer contains a figure (7.5) the deterministic engine never produced.
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        choices: [{ message: { content: 'General knowledge: typical industry churn is 7.5 percent; compare that with the churn KPI in your dataset.' } }],
+      }),
+    } as any));
+    (globalThis as any).fetch = fetchMock;
+
+    const facade = new AnalystFacade('analysis-key-2b');
+    const graph = facade.startInvestigation({ analysisKey: 'analysis-key-2b', question: 'What is a typical churn rate?' });
+    const res = await facade.ask(graph.rootId, 'What is a typical churn rate?', context);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // The original answer is KEPT and annotated — not replaced by a suppression message.
+    expect(res.summary).toContain('typical industry churn is 7.5 percent');
+    expect(res.summary).toContain('Grounding note:');
+    expect(res.summary).toContain('7.5');
+    expect(res.confidence.level).toBe('medium');
   });
 
   it('PROMPT INJECTION is still refused LOCALLY with NO provider call', async () => {

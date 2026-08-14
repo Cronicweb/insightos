@@ -222,14 +222,26 @@ export function buildGuardedAnswer(
   const ungrounded = findUngroundedNumbers(raw, context);
   const grounded = ungrounded.length === 0;
 
+  // Strict grounding no longer withholds the answer: any question may be answered using general
+  // knowledge, as long as it is presented in reference to the uploaded data. Figures that do not
+  // trace back to the engine are ANNOTATED (not suppressed) so they can never be mistaken for
+  // dataset facts, and confidence is capped accordingly.
   if (strict && !grounded) {
+    const note =
+      `\n\nGrounding note: ${ungrounded.length === 1 ? "the figure" : "the figures"} ` +
+      `${joinList(ungrounded.map((n) => String(n)), 5)} in this answer ${ungrounded.length === 1 ? "does" : "do"} ` +
+      `not trace back to the uploaded dataset or its deterministic analysis \u2014 treat ` +
+      `${ungrounded.length === 1 ? "it" : "them"} as general knowledge, not engine output.` +
+      (context.availableColumns?.length
+        ? ` This dataset contains: ${joinList(context.availableColumns)}.`
+        : "");
     return {
       ok: true,
       grounded: false,
       provider,
-      answer: suppressionMessage(context, ungrounded),
+      answer: raw.trim() + note,
       evidence: context.facts,
-      confidence: { level: "low", basis: "ungrounded claim suppressed by strict grounding" },
+      confidence: { level: "medium", basis: "answer includes general-knowledge figures flagged by strict grounding" },
       nextSteps: nextStepsFor(context),
     };
   }
