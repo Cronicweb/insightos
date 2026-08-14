@@ -45,6 +45,13 @@ function goToSettings() {
   window.location.assign(`${base}/settings/`);
 }
 
+// Route to the additive Warehouse Mode page (dbt marts over PostgreSQL via the API).
+function goToWarehouse() {
+  if (typeof window === 'undefined') return;
+  const base = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
+  window.location.assign(`${base}/warehouse/`);
+}
+
 // Wiring-only Semantic Review entry point (§14.4). Reuses the existing SemanticModelDraft shape,
 // draftToProposals + requiresReview, and AnalystFacade.ensureSemanticModel/commitSemanticModel.
 // No new abstractions; the deterministic engine remains authoritative.
@@ -230,6 +237,7 @@ export default function Page() {
           setEntered(false);
         }}
         onSettings={goToSettings}
+        onWarehouse={goToWarehouse}
       />
 
       <UploadDialog
