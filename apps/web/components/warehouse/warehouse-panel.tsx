@@ -101,8 +101,8 @@ type State =
     };
 
 const int = (n: number) => Math.round(n).toLocaleString('en-IN');
-const money = (n: number) => `\u20B9${Math.round(n).toLocaleString('en-IN')}`;
-const pct = (n: number | null | undefined) => (n == null ? '\u2014' : `${(n * 100).toFixed(1)}%`);
+const money = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
+const pct = (n: number | null | undefined) => (n == null ? '—' : `${(n * 100).toFixed(1)}%`);
 
 const compact = (n: number) => {
   if (Math.abs(n) >= 1e7) return `${(n / 1e7).toFixed(1)}Cr`;
@@ -331,11 +331,11 @@ export function WarehousePanel() {
           <div className="min-w-0">
             <h1 className="text-lg font-semibold tracking-tight text-ink">Warehouse Mode</h1>
             <p className="mt-1 text-sm text-muted">
-              Reads dbt-modelled marts (staging \u2192 intermediate \u2192 marts over PostgreSQL) through the
+              Reads dbt-modelled marts (staging → intermediate → marts over PostgreSQL) through the
               InsightOS API. Every figure below comes from{' '}
               <code className="rounded bg-elevated px-1 py-0.5 text-xs">fct_campaign_performance</code> and{' '}
               <code className="rounded bg-elevated px-1 py-0.5 text-xs">fct_caller_id_pool_health</code>,
-              guarded by 37 dbt tests \u2014 nothing is recomputed in the browser.
+              guarded by 37 dbt tests — nothing is recomputed in the browser.
             </p>
           </div>
         </div>
@@ -371,7 +371,7 @@ export function WarehousePanel() {
             ) : (
               <PlugZap className="h-4 w-4" aria-hidden />
             )}
-            {state.phase === 'connecting' ? 'Connecting\u2026' : state.phase === 'ready' ? 'Refresh' : 'Connect'}
+            {state.phase === 'connecting' ? 'Connecting…' : state.phase === 'ready' ? 'Refresh' : 'Connect'}
           </button>
         </form>
         <p className="mt-2 text-xs text-subtle">
@@ -397,7 +397,7 @@ export function WarehousePanel() {
           <section aria-label="Monthly KPIs" data-testid="warehouse-kpis">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-sm font-semibold text-muted">
-                Month \u00B7 {monthLabel(month)}
+                Month · {monthLabel(month)}
                 {month === ready.latestMonth ? (
                   <span className="ml-1.5 rounded-md bg-accent/10 px-1.5 py-0.5 text-2xs font-semibold text-accent">
                     Latest
@@ -428,7 +428,7 @@ export function WarehousePanel() {
                 { label: 'Connect rate', value: pct(kpi.connect_rate) },
                 { label: 'Conversions', value: int(kpi.conversions) },
                 { label: 'Revenue', value: money(kpi.revenue) },
-                { label: 'ROAS', value: `${kpi.roas.toFixed(2)}\u00D7` },
+                { label: 'ROAS', value: `${kpi.roas.toFixed(2)}×` },
               ].map((k) => (
                 <div key={k.label} className="card p-4">
                   <div className="text-xs text-muted">{k.label}</div>
@@ -466,7 +466,7 @@ export function WarehousePanel() {
                           )} MoM)`,
                       )
                       .join('; ')}
-                    . Flagged by the dbt mart when a pool\u2019s connect rate drops more than 30% month-over-month.
+                    . Flagged by the dbt mart when a pool&rsquo;s connect rate drops more than 30% month-over-month.
                   </span>
                 </>
               ) : (
@@ -480,7 +480,7 @@ export function WarehousePanel() {
           {/* Funnel - selected month, straight from /warehouse/trends */}
           <section className="card p-4" data-testid="warehouse-funnel">
             <h2 className="mb-3 text-sm font-semibold text-ink">
-              Monthly funnel \u00B7 {monthLabel(month)}
+              Monthly funnel · {monthLabel(month)}
             </h2>
             <div className="flex flex-col gap-2">
               {funnel.map((s, i) => (
@@ -496,13 +496,13 @@ export function WarehousePanel() {
                     </span>
                   </div>
                   <div className="w-24 shrink-0 text-right text-xs tabular-nums text-subtle">
-                    {s.rate == null ? '\u2014' : `${pct(s.rate)} of prev.`}
+                    {s.rate == null ? '—' : `${pct(s.rate)} of prev.`}
                   </div>
                 </div>
               ))}
             </div>
             <p className="mt-2 text-2xs text-subtle">
-              Dials \u2192 connects \u2192 qualified leads \u2192 conversions, aggregated in SQL by{' '}
+              Dials → connects → qualified leads → conversions, aggregated in SQL by{' '}
               <code className="rounded bg-elevated px-1 py-0.5">/warehouse/trends</code>.
             </p>
           </section>
@@ -510,7 +510,7 @@ export function WarehousePanel() {
           {/* Trend charts - trailing months from the marts */}
           <section aria-label="Trends" data-testid="warehouse-trends" className="flex flex-col gap-3">
             <h2 className="text-sm font-semibold text-muted">
-              Trends \u00B7 trailing {ready.trends.length} months
+              Trends · trailing {ready.trends.length} months
             </h2>
             <div className="grid gap-3 lg:grid-cols-2">
               <TrendChart
@@ -537,8 +537,8 @@ export function WarehousePanel() {
                 title="ROAS"
                 data={chartData}
                 selectedLabel={monthLabel(month)}
-                yFormat={(n) => `${n.toFixed(0)}\u00D7`}
-                series={[{ key: 'roas', label: 'ROAS', color: 'rgb(var(--accent))', format: (n) => `${n.toFixed(2)}\u00D7` }]}
+                yFormat={(n) => `${n.toFixed(0)}×`}
+                series={[{ key: 'roas', label: 'ROAS', color: 'rgb(var(--accent))', format: (n) => `${n.toFixed(2)}×` }]}
               />
               <TrendChart
                 title="Connect rate"
@@ -560,7 +560,7 @@ export function WarehousePanel() {
           {/* Pool health table - selected month */}
           <section className="card overflow-hidden" data-testid="warehouse-pools">
             <h2 className="border-b border-line px-4 py-3 text-sm font-semibold text-ink">
-              Caller-ID pool health \u00B7 fct_caller_id_pool_health \u00B7 {monthLabel(month)}
+              Caller-ID pool health · fct_caller_id_pool_health · {monthLabel(month)}
             </h2>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[640px] text-sm">
@@ -624,7 +624,7 @@ export function WarehousePanel() {
           <section className="card overflow-hidden" data-testid="warehouse-campaigns">
             <div className="border-b border-line px-4 py-3">
               <h2 className="text-sm font-semibold text-ink">
-                Campaign performance \u00B7 fct_campaign_performance \u00B7 {monthLabel(month)}
+                Campaign performance · fct_campaign_performance · {monthLabel(month)}
               </h2>
               <p className="mt-0.5 text-2xs text-subtle">Click a campaign to see its monthly history.</p>
             </div>
@@ -668,14 +668,14 @@ export function WarehousePanel() {
                         <td className="px-4 py-2.5 tabular-nums text-muted">{money(c.spend)}</td>
                         <td className="px-4 py-2.5 tabular-nums text-ink">{money(c.revenue)}</td>
                         <td className="px-4 py-2.5 tabular-nums text-muted">{money(c.cpa)}</td>
-                        <td className="px-4 py-2.5 tabular-nums font-semibold text-ink">{c.roas.toFixed(2)}\u00D7</td>
+                        <td className="px-4 py-2.5 tabular-nums font-semibold text-ink">{`${c.roas.toFixed(2)}×`}</td>
                       </tr>
                       {expanded === c.campaign && drill ? (
                         <tr className="border-b border-line/60 last:border-0">
                           <td colSpan={7} className="bg-elevated/40 px-4 py-4" data-testid="warehouse-drilldown">
                             <div className="grid gap-3 lg:grid-cols-2">
                               <TrendChart
-                                title={`${c.campaign} \u00B7 revenue vs spend`}
+                                title={`${c.campaign} · revenue vs spend`}
                                 data={drill.chart}
                                 selectedLabel={monthLabel(month)}
                                 yFormat={compact}
@@ -686,17 +686,17 @@ export function WarehousePanel() {
                                 ]}
                               />
                               <TrendChart
-                                title={`${c.campaign} \u00B7 ROAS`}
+                                title={`${c.campaign} · ROAS`}
                                 data={drill.chart}
                                 selectedLabel={monthLabel(month)}
-                                yFormat={(n) => `${n.toFixed(0)}\u00D7`}
+                                yFormat={(n) => `${n.toFixed(0)}×`}
                                 height={170}
                                 series={[
                                   {
                                     key: 'roas',
                                     label: 'ROAS',
                                     color: 'rgb(var(--positive))',
-                                    format: (n) => `${n.toFixed(2)}\u00D7`,
+                                    format: (n) => `${n.toFixed(2)}×`,
                                   },
                                 ]}
                               />
@@ -730,7 +730,7 @@ export function WarehousePanel() {
                                       <td className="px-3 py-1.5 tabular-nums text-muted">{money(r.spend)}</td>
                                       <td className="px-3 py-1.5 tabular-nums text-ink">{money(r.revenue)}</td>
                                       <td className="px-3 py-1.5 tabular-nums font-semibold text-ink">
-                                        {r.roas.toFixed(2)}\u00D7
+                                        {`${r.roas.toFixed(2)}×`}
                                       </td>
                                     </tr>
                                   ))}
@@ -748,8 +748,8 @@ export function WarehousePanel() {
           </section>
 
           <p className="text-xs text-subtle">
-            Lineage: raw.telesales_call_blocks \u2192 stg_telesales__call_blocks \u2192 int_telesales__monthly_funnel /
-            int_telesales__pool_monthly \u2192 marts. Models, tests and docs live in{' '}
+            Lineage: raw.telesales_call_blocks → stg_telesales__call_blocks → int_telesales__monthly_funnel /
+            int_telesales__pool_monthly → marts. Models, tests and docs live in{' '}
             <code className="rounded bg-elevated px-1 py-0.5">dbt/insightos_warehouse</code>.
           </p>
         </>
