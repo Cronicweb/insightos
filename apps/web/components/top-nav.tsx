@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Moon, Sun, Github, PanelLeft, Settings } from 'lucide-react';
+import { Moon, Sun, Github, PanelLeft, Settings, Database } from 'lucide-react';
 import { useTheme } from './theme-provider';
 import { cn } from '@/lib/utils';
 import { BrandMark } from '@/components/brand-mark';
@@ -40,6 +40,7 @@ export function TopNav({
   onMenu,
   onHome,
   onSettings,
+  onWarehouse,
 }: {
   tab: WorkspaceTab;
   onTabChange: (t: WorkspaceTab) => void;
@@ -47,6 +48,7 @@ export function TopNav({
   onMenu: () => void;
   onHome?: () => void;
   onSettings?: () => void;
+  onWarehouse?: () => void;
 }) {
   const { theme, toggle } = useTheme();
   const navRef = React.useRef<HTMLElement | null>(null);
@@ -121,6 +123,15 @@ export function TopNav({
         </nav>
 
         <div className="ml-auto flex shrink-0 items-center gap-0.5 sm:gap-1.5">
+          <button
+            type="button"
+            onClick={onWarehouse}
+            aria-label="Warehouse Mode"
+            title="Warehouse Mode"
+            className="grid h-11 w-11 place-items-center rounded-lg text-muted hover:bg-elevated hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            <Database className="h-[17px] w-[17px]" aria-hidden />
+          </button>
           <button
             type="button"
             onClick={onSettings}

@@ -30,6 +30,7 @@ from insightos.pipeline import AnalysisOptions, analyse
 from insightos.types import to_jsonable
 
 from . import __version__ as api_version
+from .warehouse import router as warehouse_router
 
 MAX_UPLOAD_MB = int(os.getenv("INSIGHTOS_MAX_UPLOAD_MB", "50"))
 SAMPLE_ROWS = 200
@@ -53,6 +54,8 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
+
+app.include_router(warehouse_router)
 
 _analysis_cache: dict[str, dict[str, Any]] = {}
 _frame_cache: dict[str, pd.DataFrame] = {}
