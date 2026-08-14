@@ -1,4 +1,4 @@
-"""The four vertical demo datasets carry a planted, machine-checkable truth.
+"""The five vertical demo datasets carry a planted, machine-checkable truth.
 
 These are regression tests for the *engine*, not for the generators: each
 dataset hides one deliberate business event, and the pipeline is expected to
@@ -12,7 +12,7 @@ import pytest
 from insightos.demo import GENERATORS
 from insightos.pipeline import AnalysisOptions, analyse
 
-VERTICALS = ["retail", "healthcare", "hr", "manufacturing"]
+VERTICALS = ["retail", "healthcare", "hr", "manufacturing", "telesales"]
 
 
 @pytest.fixture(scope="module")

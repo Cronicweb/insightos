@@ -381,6 +381,7 @@ def _register_verticals() -> None:
         "healthcare": verticals.generate_healthcare,
         "hr": verticals.generate_hr,
         "manufacturing": verticals.generate_manufacturing,
+        "telesales": verticals.generate_telesales,
     })
 
 

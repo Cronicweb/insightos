@@ -31,7 +31,7 @@ if TYPE_CHECKING:  # pragma: no cover - resolved by linters and type checkers on
     import pandas as pd
 
 _DEMO_KEYS = ("banking", "ecommerce", "marketing", "retail",
-              "healthcare", "hr", "manufacturing")
+              "healthcare", "hr", "manufacturing", "telesales")
 
 
 # --------------------------------------------------------------------------- #
