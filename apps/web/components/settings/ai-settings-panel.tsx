@@ -94,6 +94,27 @@ function connectionTone(state: ConnectionState): 'positive' | 'negative' | 'warn
   return 'negative';
 }
 
+
+// Preferred default model per provider, chosen ONLY from the live list the
+// provider itself returned. Lets "paste key -> Connect" complete in one step
+// without the user having to know vendor model names. Never hardcodes a model
+// that the key cannot actually use.
+const MODEL_PREFERENCE: Record<string, RegExp[]> = {
+  groq: [/llama-3\.3-70b-versatile/i, /llama-3/i, /llama/i],
+  openai: [/^gpt-4o-mini$/i, /^gpt-4o/i, /^gpt-4/i, /^o\d/i],
+  gemini: [/flash/i, /gemini-1\.5/i, /gemini/i],
+  claude: [/sonnet/i, /haiku/i, /claude/i],
+  ollama: [/llama3/i, /llama/i, /mistral/i],
+};
+
+function pickDefaultModel(providerId: string, models: string[]): string {
+  for (const re of MODEL_PREFERENCE[providerId] ?? []) {
+    const hit = models.find((m) => re.test(m));
+    if (hit) return hit;
+  }
+  return models[0] ?? '';
+}
+
 export function AISettingsPanel() {
   const [settings, setSettings] = React.useState<AISettings>(DEFAULT_AI_SETTINGS);
   const [savedAt, setSavedAt] = React.useState<number | null>(null);
@@ -135,11 +156,23 @@ export function AISettingsPanel() {
     setTesting(true);
     setConn((c) => ({ ...c, state: 'connecting', provider: settings.providerId, model: settings.model }));
     try {
-      const result = await testProviderConnection(settings);
+      let result = await testProviderConnection(settings);
+      const models = result.availableModels ?? [];
+      // One-step connect: if no model is chosen yet (or the saved one is not in
+      // the live list), auto-select a sensible default FROM THAT LIVE LIST and
+      // validate again, so pasting a key + one click yields a working setup.
+      if (models.length > 0 && (settings.model === '' || !models.includes(settings.model))) {
+        const picked = pickDefaultModel(settings.providerId, models);
+        if (picked) {
+          update({ model: picked });
+          const retry = await testProviderConnection({ ...settings, model: picked });
+          result = { ...retry, availableModels: retry.availableModels ?? models };
+        }
+      }
       setConn(result);
       // Populate the dropdown ONLY from the live list returned by the provider.
-      setAvailableModels(result.availableModels ?? []);
-      // If the saved model is not among the returned models, clear it and force
+      setAvailableModels(result.availableModels ?? models);
+      // If the model is STILL invalid after auto-pick, clear it and force
       // a re-selection. Never silently continue with an invalid model.
       if (result.state === 'invalid_model' && settings.model) {
         update({ model: '' });
@@ -289,8 +322,8 @@ export function AISettingsPanel() {
             </select>
             {!hasModels ? (
               <p className="mt-1 text-xs text-muted">
-                Run <span className="font-medium text-ink">Test Connection</span> to load the
-                available models for your key.
+                Paste your API key and hit <span className="font-medium text-ink">Connect</span>
+                &mdash; the model list loads from your provider and a default is picked automatically.
               </p>
             ) : modelInvalid || settings.model === '' ? (
               <p className="mt-1 text-xs text-negative">
@@ -403,7 +436,7 @@ export function AISettingsPanel() {
                     'focus:outline-none focus:ring-2 focus:ring-accent/50 disabled:opacity-60',
                   )}
                 >
-                  {testing ? 'Testing…' : 'Test Connection'}
+                  {testing ? 'Connecting…' : 'Connect'}
                 </button>
               </div>
               <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-4">
