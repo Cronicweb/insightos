@@ -34,3 +34,8 @@ apps/web/public/demo/
 apps/web/public/duckdb/
 *.tsbuildinfo
 apps/web/package-lock.json
+
+# dbt
+dbt/insightos_warehouse/target/
+dbt/insightos_warehouse/dbt_packages/
+dbt/insightos_warehouse/logs/

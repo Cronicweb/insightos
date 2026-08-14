@@ -1,0 +1,39 @@
+version: 2
+
+models:
+  - name: stg_telesales__call_blocks
+    description: >
+      Cleaned call blocks: canonical column names, dates cast to date,
+      monetary and score columns rounded to reporting precision. One row per
+      call block; grain unchanged from the source.
+    columns:
+      - name: call_block_id
+        data_tests: [unique, not_null]
+      - name: call_month
+        data_tests: [not_null]
+      - name: campaign
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('seed_campaigns')
+                field: campaign
+      - name: caller_id_pool
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('seed_caller_id_pools')
+                field: caller_id_pool
+      - name: agent_type
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['AI Voice Agent', 'Human Expert']
+      - name: dials
+        data_tests: [not_null]
+      - name: connects
+        data_tests: [not_null]
+      - name: conversions
+        data_tests: [not_null]

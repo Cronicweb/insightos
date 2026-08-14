@@ -1,0 +1,21 @@
+version: 2
+
+sources:
+  - name: raw
+    description: >
+      Landing zone for operational telesales data. Locally it is loaded by
+      scripts/load_raw.py from the insightos-analytics-core synthetic
+      generator; in production it would be fed by the dialer/CRM pipeline.
+    schema: raw
+    tables:
+      - name: telesales_call_blocks
+        description: >
+          One row per call block (a batch of dials for one campaign x
+          caller-ID pool x agent type on one monthly period), with the full
+          dials -> connects -> qualified leads -> conversions funnel plus
+          talk time, QA score, spend and revenue.
+        columns:
+          - name: call_block_id
+            data_tests: [unique, not_null]
+          - name: call_date
+            data_tests: [not_null]

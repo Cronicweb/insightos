@@ -1,0 +1,15 @@
+# Local/dev profile. Every value can be overridden with INSIGHTOS_PG_* env vars,
+# so the same project runs against the Compose postgres service, CI, or a
+# managed Postgres without edits.
+insightos_warehouse:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('INSIGHTOS_PG_HOST', 'localhost') }}"
+      port: "{{ env_var('INSIGHTOS_PG_PORT', '5432') | as_number }}"
+      user: "{{ env_var('INSIGHTOS_PG_USER', 'insightos') }}"
+      password: "{{ env_var('INSIGHTOS_PG_PASSWORD', 'insightos') }}"
+      dbname: "{{ env_var('INSIGHTOS_PG_DATABASE', 'insightos') }}"
+      schema: analytics
+      threads: 4

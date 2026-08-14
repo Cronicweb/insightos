@@ -1,0 +1,44 @@
+version: 2
+
+models:
+  - name: dim_campaign
+    description: Campaign dimension (business line, offering, average ticket).
+    columns:
+      - name: campaign
+        data_tests: [unique, not_null]
+
+  - name: dim_caller_id_pool
+    description: Caller-ID pool dimension.
+    columns:
+      - name: caller_id_pool
+        data_tests: [unique, not_null]
+
+  - name: fct_campaign_performance
+    description: Monthly campaign performance with funnel rates, CPA and ROAS.
+    columns:
+      - name: campaign_month_key
+        data_tests: [unique, not_null]
+      - name: campaign
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_campaign')
+                field: campaign
+      - name: roas
+        data_tests: [not_null]
+
+  - name: fct_caller_id_pool_health
+    description: Monthly caller-ID pool health with MoM connect-rate movement and a spam-flagging risk flag.
+    columns:
+      - name: pool_month_key
+        data_tests: [unique, not_null]
+      - name: caller_id_pool
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_caller_id_pool')
+                field: caller_id_pool
+      - name: connect_rate
+        data_tests: [not_null]
