@@ -123,6 +123,43 @@ def warehouse_summary() -> dict[str, Any]:
     return {"latest_month": kpi[0] if kpi else None, "spam_flag_risks": flagged}
 
 
+@router.get("/trends", summary="Monthly KPI rollup across campaigns (trend charts + funnel)")
+def warehouse_trends(
+    months: int = Query(18, ge=1, le=24, description="How many trailing months to return"),
+) -> dict[str, Any]:
+    """One row per month, aggregated in SQL from fct_campaign_performance.
+
+    Powers the month selector, trend charts and the funnel view. Rates and
+    ROAS are recomputed here at the monthly grain with the exact formulas the
+    dbt mart uses per campaign - still SELECT-side, never in the browser.
+    """
+    rows = _rows(
+        f"""
+        select
+          f.call_month,
+          sum(f.dials)           as dials,
+          sum(f.connects)        as connects,
+          sum(f.qualified_leads) as qualified_leads,
+          sum(f.conversions)     as conversions,
+          sum(f.spend)           as spend,
+          sum(f.revenue)         as revenue,
+          round(sum(f.connects)::numeric        / nullif(sum(f.dials), 0),           4) as connect_rate,
+          round(sum(f.qualified_leads)::numeric / nullif(sum(f.connects), 0),        4) as qualification_rate,
+          round(sum(f.conversions)::numeric     / nullif(sum(f.qualified_leads), 0), 4) as close_rate,
+          round(sum(f.conversions)::numeric     / nullif(sum(f.connects), 0),        4) as conversion_rate,
+          round(sum(f.revenue)::numeric         / nullif(sum(f.spend), 0),           2) as roas
+        from {_MARTS}.fct_campaign_performance f
+        where f.call_month >= (
+          select max(call_month) from {_MARTS}.fct_campaign_performance
+        ) - make_interval(months => %s - 1)
+        group by f.call_month
+        order by f.call_month
+        """,
+        (months,),
+    )
+    return {"rows": rows}
+
+
 @router.get("/campaign-performance", summary="fct_campaign_performance rows (joined to dim_campaign)")
 def campaign_performance(
     months: int = Query(6, ge=1, le=24, description="How many trailing months to return"),
