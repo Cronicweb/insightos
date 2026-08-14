@@ -1,0 +1,5 @@
+caller_id_pool,pool_description
+Pool A,Primary outbound DID pool
+Pool B,Secondary outbound DID pool
+Pool C,Overflow outbound DID pool
+Pool D,Regional outbound DID pool

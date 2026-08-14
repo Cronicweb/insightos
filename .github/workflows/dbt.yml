@@ -1,0 +1,45 @@
+name: dbt warehouse
+
+on:
+  push:
+    branches: [main]
+    paths: ["dbt/**", "packages/analytics-core/**", ".github/workflows/dbt.yml"]
+  pull_request:
+    paths: ["dbt/**", "packages/analytics-core/**", ".github/workflows/dbt.yml"]
+
+jobs:
+  dbt-build:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: insightos
+          POSTGRES_USER: insightos
+          POSTGRES_PASSWORD: insightos
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U insightos -d insightos"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dbt and analytics-core
+        run: pip install dbt-postgres psycopg2-binary ./packages/analytics-core
+
+      - name: Load raw layer from the synthetic generator
+        run: python dbt/insightos_warehouse/scripts/load_raw.py
+
+      - name: dbt build (seeds + models + tests)
+        working-directory: dbt/insightos_warehouse
+        run: dbt build --profiles-dir . --no-partial-parse
+
+      - name: dbt docs generate
+        working-directory: dbt/insightos_warehouse
+        run: dbt docs generate --profiles-dir .

@@ -25,3 +25,46 @@ services:
     ports:
       - "8080:80"
     restart: unless-stopped
+
+  # Warehouse mode (optional): start with `docker compose --profile warehouse up -d postgres`
+  # then run the dbt job with  `docker compose --profile warehouse run --rm dbt`.
+  postgres:
+    image: postgres:16
+    profiles: ["warehouse"]
+    environment:
+      POSTGRES_DB: insightos
+      POSTGRES_USER: insightos
+      POSTGRES_PASSWORD: insightos
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U insightos -d insightos"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  # One-shot job, not a long-running server: loads the raw layer from the
+  # analytics-core generator, then runs `dbt build` (seeds + models + tests).
+  dbt:
+    image: python:3.12-slim
+    profiles: ["warehouse"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    working_dir: /workspace/dbt/insightos_warehouse
+    environment:
+      INSIGHTOS_PG_HOST: postgres
+    volumes:
+      - .:/workspace
+    entrypoint: ["bash", "-lc"]
+    command:
+      - >
+        pip install --quiet dbt-postgres psycopg2-binary /workspace/packages/analytics-core &&
+        python scripts/load_raw.py &&
+        dbt build --profiles-dir .
+
+volumes:
+  postgres_data:
