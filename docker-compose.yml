@@ -9,6 +9,9 @@ services:
     environment:
       INSIGHTOS_CORS_ORIGINS: "http://localhost:3000,http://localhost:8080"
       INSIGHTOS_MAX_UPLOAD_MB: "50"
+      # Warehouse mode (harmless when the postgres profile is not running:
+      # the /warehouse endpoints simply return 503 until the DB is up).
+      INSIGHTOS_PG_HOST: postgres
     ports:
       - "8000:8000"
     restart: unless-stopped
