@@ -7,6 +7,7 @@ import * as React from 'react';
 import type { InvestigationResponse } from '@/lib/ai';
 import { Card, CardHeader, CardTitle, CardBody, Badge } from '@/components/ui/primitives';
 import { AITracePanel } from './ai-trace-panel';
+import { MarkdownText } from './markdown-text';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -38,7 +39,7 @@ export function InvestigationResponseCard({
         <Badge tone={toneForLevel}>{response.confidence.level} confidence</Badge>
       </CardHeader>
       <CardBody>
-        <Section title="Summary">{response.summary}</Section>
+        <Section title="Summary"><MarkdownText text={response.summary} /></Section>
 
         <Section title="Evidence">
           <ul className="space-y-1">
